@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Course Compass</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --navy: #16213E;
+      --navy-light: #24345C;
+      --paper: #F4F0E8;
+      --card: #FFFFFF;
+      --marigold: #EFA23D;
+      --marigold-dark: #D68A26;
+      --sage: #6B8F71;
+      --text: #22252B;
+      --muted: #767b86;
+      --border: #E7E1D3;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--paper);
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(22, 33, 62, 0.07) 1px, transparent 0);
+      background-size: 22px 22px;
+      margin: 0;
+      padding: 40px 16px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .chat-widget {
+      width: 100%;
+      max-width: 430px;
+      background: var(--card);
+      border-radius: 20px;
+      box-shadow: 0 1px 2px rgba(22, 33, 62, 0.06), 0 20px 48px -12px rgba(22, 33, 62, 0.28);
+      display: flex;
+      flex-direction: column;
+      height: 640px;
+      overflow: hidden;
+      border: 1px solid rgba(22, 33, 62, 0.06);
+    }
+
+    /* ---------- header ---------- */
+    .chat-header {
+      background: var(--navy);
+      background-image: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+      color: #fff;
+      padding: 18px 20px 16px;
+      position: relative;
+    }
+
+    .chat-header-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .compass-icon {
+      width: 30px;
+      height: 30px;
+      flex-shrink: 0;
+    }
+
+    .chat-header h1 {
+      font-family: 'Fraunces', serif;
+      font-weight: 600;
+      font-size: 18px;
+      margin: 0;
+      letter-spacing: 0.01em;
+    }
+
+    .chat-header .sub {
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 1px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+
+    /* ---------- progress stepper ---------- */
+    .stepper {
+      display: flex;
+      align-items: center;
+      margin-top: 14px;
+      padding: 0 2px;
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.25);
+      transition: all 0.35s ease;
+      flex-shrink: 0;
+    }
+
+    .step-dot.done {
+      background: var(--sage);
+    }
+
+    .step-dot.active {
+      background: var(--marigold);
+      box-shadow: 0 0 0 4px rgba(239, 162, 61, 0.25);
+      transform: scale(1.15);
+    }
+
+    .step-line {
+      flex: 1;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.15);
+      margin: 0 6px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 2px;
+    }
+
+    .step-line-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 0%;
+      background: var(--sage);
+      transition: width 0.4s ease;
+    }
+
+    .step-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 9.5px;
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    /* ---------- messages ---------- */
+    .chat-messages {
+      flex: 1;
+      padding: 18px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+
+    .chat-messages::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+      background: #ddd6c5;
+      border-radius: 3px;
+    }
+
+    @keyframes riseIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .msg {
+      max-width: 82%;
+      padding: 11px 15px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.48;
+      white-space: pre-wrap;
+      animation: riseIn 0.32s ease both;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: var(--marigold);
+      color: #2b1c04;
+      font-weight: 500;
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg.bot {
+      align-self: flex-start;
+      background: #F1EEE5;
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+    }
+
+    /* ---------- course cards ---------- */
+    .course-card {
+      align-self: flex-start;
+      max-width: 92%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--navy);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 13px;
+      box-shadow: 0 2px 8px rgba(22, 33, 62, 0.06);
+      animation: riseIn 0.36s ease both;
+    }
+
+    .course-card h4 {
+      font-family: 'Fraunces', serif;
+      margin: 0 0 5px 0;
+      font-size: 15.5px;
+      color: var(--navy);
+      font-weight: 600;
+    }
+
+    .course-card .meta {
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .course-card .desc {
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .reason-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .reason-tag {
+      background: rgba(107, 143, 113, 0.12);
+      color: var(--sage);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 9px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .reason-tag::before {
+      content: "✓";
+      font-size: 10px;
+    }
+
+    /* ---------- quick replies ---------- */
+    .quick-replies {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      align-self: flex-start;
+      max-width: 92%;
+      animation: riseIn 0.32s ease both;
+    }
+
+    .qr-btn {
+      background: #fff;
+      border: 1.5px solid var(--navy);
+      color: var(--navy);
+      border-radius: 20px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .qr-btn:hover {
+      background: var(--navy);
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(22, 33, 62, 0.25);
+    }
+
+    .qr-btn.ghost {
+      border-style: dashed;
+      border-color: var(--muted);
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .qr-btn.ghost:hover {
+      background: var(--muted);
+      border-color: var(--muted);
+    }
+
+    /* ---------- typing indicator ---------- */
+    .typing-row {
+      display: none;
+      align-self: flex-start;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 15px;
+      background: #F1EEE5;
+      border-radius: 16px;
+      border-bottom-left-radius: 4px;
+    }
+
+    .typing-row.show {
+      display: flex;
+    }
+
+    .typing-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    @keyframes bounce {
+
+      0%,
+      60%,
+      100% {
+        transform: translateY(0);
+        opacity: 0.5;
+      }
+
+      30% {
+        transform: translateY(-4px);
+        opacity: 1;
+      }
+    }
+
+    /* ---------- input ---------- */
+    .chat-input {
+      display: flex;
+      border-top: 1px solid var(--border);
+      padding: 12px;
+      gap: 8px;
+      background: var(--card);
+    }
+
+    .chat-input input {
+      flex: 1;
+      border: 1.5px solid var(--border);
+      border-radius: 22px;
+      padding: 11px 16px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .chat-input input:focus {
+      border-color: var(--marigold);
+    }
+
+    .chat-input button {
+      background: var(--navy);
+      color: #fff;
+      border: none;
+      border-radius: 22px;
+      padding: 0 20px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .chat-input button:hover {
+      background: var(--navy-light);
+    }
+
+    .chat-input button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .msg,
+      .course-card,
+      .quick-replies {
+        animation: none;
+      }
+
+      .typing-dot {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="chat-widget">
+    <div class="chat-header">
+      <div class="chat-header-top">
+        <svg class="compass-icon" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="13" stroke="#EFA23D" stroke-width="2" />
+          <path d="M21 11L17.5 17.5L11 21L14.5 14.5L21 11Z" fill="#EFA23D" />
+          <circle cx="16" cy="16" r="1.6" fill="#16213E" />
+        </svg>
+        <div>
+          <h1>Course Compass</h1>
+          <div class="sub">Find your path, one question at a time</div>
+        </div>
+      </div>
+      <div class="stepper">
+        <div class="step-dot active" id="dot-1"></div>
+        <div class="step-line">
+          <div class="step-line-fill" id="line-1"></div>
+        </div>
+        <div class="step-dot" id="dot-2"></div>
+        <div class="step-line">
+          <div class="step-line-fill" id="line-2"></div>
+        </div>
+        <div class="step-dot" id="dot-3"></div>
+        <div class="step-line">
+          <div class="step-line-fill" id="line-3"></div>
+        </div>
+        <div class="step-dot" id="dot-4"></div>
+      </div>
+      <div class="step-labels">
+        <span>Level</span><span>Interest</span><span>Mode</span><span>Matches</span>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="messages"></div>
+    <div class="typing-row" id="typing">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>
+    <div class="chat-input">
+      <input type="text" id="userInput" placeholder="Type a message..." />
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "http://127.0.0.1:8000/chat";
+    const sessionId = "web_" + Math.random().toString(36).slice(2);
+
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const typingEl = document.getElementById("typing");
+
+    let currentStep = 1;
+    function setStep(step) {
+      currentStep = step;
+      for (let i = 1; i <= 4; i++) {
+        const dot = document.getElementById("dot-" + i);
+        dot.classList.remove("active", "done");
+        if (i < step) dot.classList.add("done");
+        else if (i === step) dot.classList.add("active");
+      }
+      for (let i = 1; i <= 3; i++) {
+        document.getElementById("line-" + i).style.width = (i < step ? "100%" : "0%");
+      }
+    }
+
+    function addMessage(text, sender) {
+      const div = document.createElement("div");
+      div.className = "msg " + sender;
+      div.textContent = text;
+      messagesEl.appendChild(div);
+      scrollToBottom();
+    }
+
+    function scrollToBottom() {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function addCourseCards(courses) {
+      courses.forEach(c => {
+        const card = document.createElement("div");
+        card.className = "course-card";
+        const reasonsHtml = (c.match_reasons || [])
+          .map(r => `<span class="reason-tag">${r}</span>`)
+          .join("");
+        card.innerHTML = `
+        <h4>${c.title || ""}</h4>
+        <div class="meta">${c.duration || ""} · ${c.mode || ""}</div>
+        <div class="desc">${c.description || ""}</div>
+        ${reasonsHtml ? `<div class="reason-tags">${reasonsHtml}</div>` : ""}
+      `;
+        messagesEl.appendChild(card);
+      });
+      scrollToBottom();
+      setStep(4);
+    }
+
+    function addQuickReplies(options) {
+      const wrap = document.createElement("div");
+      wrap.className = "quick-replies";
+
+      options.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.textContent = opt;
+        btn.className = "qr-btn" + (opt === "Something else" ? " ghost" : "");
+        btn.addEventListener("click", () => {
+          if (opt === "Something else") {
+            inputEl.focus();
+            wrap.remove();
+            return;
+          }
+          wrap.remove();
+          addMessage(opt, "user");
+          sendToBackend(opt);
+        });
+        wrap.appendChild(btn);
+      });
+      messagesEl.appendChild(wrap);
+      scrollToBottom();
+
+      // infer stepper progress from which question is being asked
+      if (options.includes("10th pass")) setStep(1);
+      else if (options.includes("Web Development")) setStep(2);
+      else if (options.includes("Online")) setStep(3);
+    }
+
+    async function sendToBackend(text) {
+      sendBtn.disabled = true;
+      typingEl.classList.add("show");
+      scrollToBottom();
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, message: text })
+        });
+        const data = await res.json();
+        addMessage(data.reply, "bot");
+        if (data.suggested_courses && data.suggested_courses.length > 0) {
+          addCourseCards(data.suggested_courses);
+        }
+        if (data.quick_replies && data.quick_replies.length > 0) {
+          addQuickReplies(data.quick_replies);
+        }
+      } catch (err) {
+        addMessage("Sorry, something went wrong connecting to the server.", "bot");
+        console.error(err);
+      } finally {
+        sendBtn.disabled = false;
+        typingEl.classList.remove("show");
+        inputEl.focus();
+      }
+    }
+
+    function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      addMessage(text, "user");
+      inputEl.value = "";
+      sendToBackend(text);
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    addMessage("Hi there! 👋 Before we find the right course for you, could I get your first name?", "bot");
+  </script>
+
+</body>
+
+</html>

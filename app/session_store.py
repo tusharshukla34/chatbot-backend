@@ -17,6 +17,7 @@ def get_session(session_id: str) -> Dict[str, Any]:
             "lead_data": {"first_name": "", "whatsapp_number": "", "email": ""},
             "course_interest_id": None,
             "awaiting_selection": False,
+            "selection_finalized": False,
         }
     return _sessions[session_id]
 

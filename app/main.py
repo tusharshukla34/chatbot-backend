@@ -17,6 +17,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.db import get_connection
+
+@app.get("/admin/leads")
+def admin_leads():
+    conn = get_connection()
+    leads = conn.execute("SELECT * FROM leads ORDER BY id DESC").fetchall()
+    interests = conn.execute("SELECT * FROM course_interest ORDER BY id DESC").fetchall()
+    conn.close()
+    return {
+        "leads": [dict(row) for row in leads],
+        "course_interest": [dict(row) for row in interests],
+    }
+
 
 def get_quick_replies(profile: dict) -> list:
     if not profile.get("education_level"):
@@ -133,6 +146,9 @@ def chat(req: ChatRequest):
         quick_replies = get_quick_replies(session["profile"])
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies)
 
+
+
+
     # check if this message is a course selection (button click with exact title, or "Still deciding")
     if session["awaiting_selection"]:
         matched_titles = [c["title"] for c in session["last_matches"]]
@@ -146,7 +162,9 @@ def chat(req: ChatRequest):
 
         if user_text in matched_titles:
             session["awaiting_selection"] = False
+            session["selection_finalized"] = True
             lead = session["lead_data"]
+        
             if session["course_interest_id"]:
                 update_selected_course(session["course_interest_id"], user_text)
             send_selection_notification(
@@ -169,6 +187,10 @@ def chat(req: ChatRequest):
     session["last_matches"] = updated_matches
 
     append_message(req.session_id, "assistant", reply)
+
+    # once a final selection is made, stop re-sending course cards on every follow-up
+    if session["selection_finalized"]:
+        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 
     # if we're still waiting on a final selection, re-offer buttons for whatever remains
     if session["awaiting_selection"] and updated_matches:

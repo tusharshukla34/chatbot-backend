@@ -22,8 +22,12 @@ from app.db import get_connection
 @app.get("/admin/leads")
 def admin_leads():
     conn = get_connection()
-    leads = conn.execute("SELECT * FROM leads ORDER BY id DESC").fetchall()
-    interests = conn.execute("SELECT * FROM course_interest ORDER BY id DESC").fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM leads ORDER BY id DESC")
+    leads = cur.fetchall()
+    cur.execute("SELECT * FROM course_interest ORDER BY id DESC")
+    interests = cur.fetchall()
+    cur.close()
     conn.close()
     return {
         "leads": [dict(row) for row in leads],

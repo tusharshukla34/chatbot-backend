@@ -46,13 +46,18 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
     stage = session["lead_stage"]
 
     if stage == "first_name":
-        if len(text) < 2:
-            reply = "Could you share your first name? Just a couple of letters is fine."
+        NON_NAME_WORDS = {
+            "hi", "hii", "hiii", "hello", "hey", "heya", "yo", "hola",
+            "ok", "okay", "sure", "yes", "no", "test", "namaste"
+        }
+        cleaned = text.strip()
+        if len(cleaned) < 2 or cleaned.lower() in NON_NAME_WORDS or not cleaned.replace(" ", "").isalpha():
+            reply = "That doesn't look like a name — could you tell me your actual first name?"
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
-        session["lead_data"]["first_name"] = text
+        session["lead_data"]["first_name"] = cleaned
         session["lead_stage"] = "whatsapp"
-        reply = f"Nice to meet you, {text}! What's your WhatsApp number? (with country code if outside India)"
+        reply = f"Nice to meet you, {cleaned}! What's your WhatsApp number? (with country code if outside India)"
         append_message(req.session_id, "assistant", reply)
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 

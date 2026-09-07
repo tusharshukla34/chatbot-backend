@@ -55,8 +55,10 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
             "ok", "okay", "sure", "yes", "no", "test", "namaste"
         }
         cleaned = text.strip()
-        if len(cleaned) < 2 or cleaned.lower() in NON_NAME_WORDS or not cleaned.replace(" ", "").isalpha():
-            reply = "That doesn't look like a name — could you tell me your actual first name?"
+        if (len(cleaned) < 2
+                or cleaned.lower() in NON_NAME_WORDS
+                or not cleaned.replace(" ", "").isalpha()):
+            reply = "That doesn't look like a name — could you share your name?"
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
         session["lead_data"]["first_name"] = cleaned

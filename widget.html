@@ -225,6 +225,35 @@
       font-weight: 600;
     }
 
+    .module-list {
+      margin: 8px 0 0 0;
+      padding-left: 18px;
+      font-size: 13px;
+      color: var(--text);
+}
+    .module-list li {
+      margin-bottom: 3px;
+}
+    .more-note {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+      font-style: italic;
+    }
+    .view-full-link {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--navy);
+      text-decoration: none;
+      border-bottom: 1.5px dashed var(--navy);
+    }
+    .view-full-link:hover {
+      color: var(--marigold-dark);
+      border-color: var(--marigold-dark);
+    }
+
     .course-card .meta {
       color: var(--muted);
       margin-bottom: 8px;
@@ -496,23 +525,45 @@
     }
 
     function addCourseCards(courses) {
-      courses.forEach(c => {
-        const card = document.createElement("div");
-        card.className = "course-card";
-        const reasonsHtml = (c.match_reasons || [])
-          .map(r => `<span class="reason-tag">${r}</span>`)
-          .join("");
-        card.innerHTML = `
+    courses.forEach(c => {
+      const card = document.createElement("div");
+      card.className = "course-card";
+      const reasonsHtml = (c.match_reasons || [])
+        .map(r => `<span class="reason-tag">${r}</span>`)
+        .join("");
+      const modulesHtml = (c.modules_preview || [])
+        .map(m => `<li>${m}</li>`)
+        .join("");
+      const hasMore = c.total_modules > (c.modules_preview || []).length;
+
+      card.innerHTML = `
         <h4>${c.title || ""}</h4>
         <div class="meta">${c.duration || ""} · ${c.mode || ""}</div>
-        <div class="desc">${c.description || ""}</div>
+        <ul class="module-list">${modulesHtml}</ul>
+        ${hasMore ? `<div class="more-note">+ ${c.total_modules - (c.modules_preview || []).length} more modules</div>` : ""}
         ${reasonsHtml ? `<div class="reason-tags">${reasonsHtml}</div>` : ""}
+        <a href="${c.link || '#'}" class="view-full-link" data-title="${c.title || ''}" target="_blank" rel="noopener">
+          View all — click here to see full course content →
+        </a>
       `;
-        messagesEl.appendChild(card);
+      messagesEl.appendChild(card);
+
+      const linkEl = card.querySelector(".view-full-link");
+      linkEl.addEventListener("click", (e) => {
+        if (!c.link) {
+          e.preventDefault();
+        }
+        fetch(API_URL.replace("/chat", "/mark-interest"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, course_title: c.title }),
+          keepalive: true
+        }).catch(err => console.error("mark-interest failed", err));
       });
-      scrollToBottom();
-      setStep(4);
-    }
+    });
+    scrollToBottom();
+    setStep(4);
+  }
 
     function addQuickReplies(options) {
       const wrap = document.createElement("div");
@@ -584,7 +635,7 @@
       if (e.key === "Enter") sendMessage();
     });
 
-    addMessage("Hi there! 👋 Before we find the right course for you, could I get your first name?", "bot");
+    addMessage("Hi there! 👋 Before we find the right course for you, could I get your Full name?", "bot");
   </script>
 
 </body>

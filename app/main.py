@@ -7,6 +7,8 @@ from app.matching import match_courses
 from app.validators import is_valid_email, is_valid_phone, clean_phone
 from app.db import save_lead, save_course_interest, update_selected_course
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
+from app.schemas import ChatRequest, ChatResponse, MarkInterestRequest
+
 
 app = FastAPI(title="Course Advisor Chatbot")
 
@@ -155,7 +157,22 @@ def chat(req: ChatRequest):
         quick_replies = get_quick_replies(session["profile"])
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies)
 
+@app.post("/mark-interest")
+def mark_interest(req: MarkInterestRequest):
+    session = get_session(req.session_id)
+    lead = session["lead_data"]
 
+    if session.get("course_interest_id"):
+        update_selected_course(session["course_interest_id"], req.course_title)
+
+    send_selection_notification(
+        first_name=lead.get("first_name", ""),
+        whatsapp_number=lead.get("whatsapp_number", ""),
+        email=lead.get("email", ""),
+        selected_course=req.course_title,
+    )
+    session["selection_finalized"] = True
+    return {"status": "ok"}
 
 
     # check if this message is a course selection (button click with exact title, or "Still deciding")

@@ -98,18 +98,19 @@ def _match_reasons(row: Dict[str, Any], profile: Dict[str, Any]) -> List[str]:
 
 
 def _trim_for_frontend(course: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any]:
+    all_modules = course.get("_modules_list", [])
     trimmed = {
         "title": course.get("course_title", ""),
-        "description": course.get("description", ""),
+        "modules_preview": all_modules[:5],
+        "total_modules": len(all_modules),
         "duration": course.get("duration", "") or "Contact us for details",
         "mode": course.get("mode", "") or "Contact us for details",
-        "career_outcomes": course.get("career_outcomes", "") or "",
         "match_reasons": _match_reasons(course, profile),
     }
     if COURSE_PAGE_BASE_URL and course.get("urlslug"):
         trimmed["link"] = f"{COURSE_PAGE_BASE_URL.rstrip('/')}/{course['urlslug']}"
     else:
-        trimmed["link"] = course.get("urlslug", "")
+        trimmed["link"] = ""  # institute hasn't provided a base URL yet
     return trimmed
 
 

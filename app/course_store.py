@@ -2,7 +2,7 @@ import pandas as pd
 from app.config import COURSES_FILE
 
 REQUIRED_COLUMNS = [
-    "program", "subprogram", "course_title", "description", "urlslug",
+    "program", "subprogram", "course_title", "description", "modules", "urlslug",
     "min_qualification", "required_stream", "min_percentage", "duration",
     "mode", "interest_tags", "career_outcomes", "prerequisite_course",
 ]
@@ -21,6 +21,9 @@ class CourseStore:
         df = df.fillna("")
         df["_tags"] = df["interest_tags"].apply(
             lambda s: [t.strip().lower() for t in str(s).split(",") if t.strip()]
+        )
+        df["_modules_list"] = df["modules"].apply(
+            lambda s: [m.strip() for m in str(s).split(";") if m.strip()]
         )
         return df
 

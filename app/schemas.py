@@ -11,3 +11,8 @@ class ChatResponse(BaseModel):
     reply: str
     suggested_courses: List[dict] = []
     quick_replies: List[str] = []
+
+
+class MarkInterestRequest(BaseModel):
+    session_id: str
+    course_title: str    

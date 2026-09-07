@@ -40,8 +40,6 @@ def get_quick_replies(profile: dict) -> list:
         return ["10th pass", "12th pass", "Graduate", "Something else"]
     if not profile.get("interests"):
         return ["Fullstack Web", "Cyber Security", "Data Programs", "AI-ML", "Digital Marketing", "Something else"]
-    if not profile.get("mode_preference"):
-        return ["Online", "Offline", "Hybrid", "Something else"]
     return []
 
 

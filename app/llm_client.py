@@ -12,14 +12,13 @@ Chat naturally with the student, asking one question at a time, and extract a st
 Fields to fill as you learn them (leave blank/empty if unknown):
 - education_level: e.g. "10th pass", "12th pass", "Graduate"
 - interests: list of keywords (e.g. ["coding","design"])
-- mode_preference: "online", "offline", "hybrid", or ""
 - completed_courses: list of any courses already done, else []
 
-Set "ready_for_recommendation": true only once you know ALL of: education_level, at least one interest,
-AND mode_preference. Ask about whichever of these is still missing, one at a time.
+Set "ready_for_recommendation": true only once you know BOTH education_level AND at least one interest.
+Ask about whichever of these is still missing, one at a time.
 
 Respond ONLY with raw JSON, no markdown fences, in exactly this shape:
-{"reply": "...", "profile": {"education_level": "", "interests": [], "mode_preference": "", "completed_courses": []}, "ready_for_recommendation": false}
+{"reply": "...", "profile": {"education_level": "", "interests": [], "completed_courses": []}, "ready_for_recommendation": false}
 """
 
 RECOMMEND_SYSTEM_PROMPT = """You are the same friendly course-counseling assistant. You've been given real

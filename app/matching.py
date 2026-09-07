@@ -129,5 +129,11 @@ def match_courses(profile: Dict[str, Any], top_n: int = 3) -> List[Dict[str, Any
     if not results:
         results = candidates
 
-    top_results = results[:top_n]
+    # if the student picked a specific program category, show every real
+    # course in that track rather than an arbitrary top-3 slice
+    if target_programs:
+        top_results = results
+    else:
+        top_results = results[:top_n]
+
     return [_trim_for_frontend(course, profile) for course in top_results]

@@ -57,7 +57,7 @@ return the same list unchanged (don't clear it just because of an unrelated ques
 def general_followup(history: List[Dict[str, str]], previously_shown_courses: List[Dict[str, Any]]) -> Dict[str, Any]:
     catalog = "\n".join(
         f"- {c['title']} | duration: {c['duration']} | mode: {c['mode']} "
-        f"| outcomes: {c['career_outcomes']} | desc: {c['description']}"
+        f"| modules: {', '.join(c.get('modules_preview', []))}"
         for c in previously_shown_courses
     )
     context_msg = {
@@ -113,14 +113,15 @@ def _fallback_recommendation_text(matched_courses: List[Dict[str, Any]]) -> str:
     intro = "Based on what you shared, here are a few courses that could be a great fit for you!"
     lines = [intro]
     for c in matched_courses:
-        lines.append(f"\n{c['title']} — {c['duration']}, {c['mode']} mode. {c['description']}")
+        modules = ", ".join(c.get("modules_preview", [])[:3])
+        lines.append(f"\n{c['title']} — {c['duration']}, {c['mode']} mode. Covers {modules}.")
     return "\n".join(lines)
 
 
 def phrase_recommendation(history: List[Dict[str, str]], matched_courses: List[Dict[str, Any]]) -> str:
     catalog = "\n".join(
         f"- {c['title']} | duration: {c['duration']} | mode: {c['mode']} "
-        f"| outcomes: {c['career_outcomes']} | desc: {c['description']}"
+        f"| modules: {', '.join(c.get('modules_preview', []))}"
         for c in matched_courses
     )
     messages = (

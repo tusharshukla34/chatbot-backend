@@ -490,7 +490,9 @@
   </div>
 
   <script>
-    const API_URL = "https://chatbot-backend-a3kk.onrender.com/chat";
+    const API_BASE = "https://chatbot-backend-a3kk.onrender.com";
+    const API_URL = `${API_BASE}/chat`;
+    const MARK_INTEREST_URL = `${API_BASE}/mark-interest`;
     const sessionId = "web_" + Math.random().toString(36).slice(2);
 
     const messagesEl = document.getElementById("messages");
@@ -553,7 +555,7 @@
         if (!c.link) {
           e.preventDefault();
         }
-        fetch(API_URL.replace("/chat", "/mark-interest"), {
+        fetch(MARK_INTEREST_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionId, course_title: c.title }),

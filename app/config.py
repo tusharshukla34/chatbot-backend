@@ -14,3 +14,6 @@ MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "20"))
 CALLMEBOT_PHONE = os.getenv("CALLMEBOT_PHONE", "")
 CALLMEBOT_APIKEY = os.getenv("CALLMEBOT_APIKEY", "")
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")

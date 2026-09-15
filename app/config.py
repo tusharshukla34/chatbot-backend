@@ -17,3 +17,4 @@ TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")

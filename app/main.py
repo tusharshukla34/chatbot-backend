@@ -14,9 +14,11 @@ from app.config import ADMIN_USERNAME, ADMIN_PASSWORD
 
 app = FastAPI(title="Course Advisor Chatbot")
 
+from app.config import ALLOWED_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

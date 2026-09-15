@@ -5,7 +5,6 @@ Groq is never called here; free-text interpretation happens in main.py/llm_clien
 """
 from typing import List, Dict, Any
 from app.course_store import course_store
-from app.config import COURSE_PAGE_BASE_URL
 
 
 def _trim_course(course: Dict[str, Any]) -> Dict[str, Any]:
@@ -17,11 +16,8 @@ def _trim_course(course: Dict[str, Any]) -> Dict[str, Any]:
         "duration": course.get("duration", "") or "Contact us for details",
         "mode": course.get("mode", "") or "Contact us for details",
         "match_reasons": [],
+        "link": course.get("real_link", "") or "",
     }
-    if COURSE_PAGE_BASE_URL and course.get("urlslug"):
-        trimmed["link"] = f"{COURSE_PAGE_BASE_URL.rstrip('/')}/{course['urlslug']}"
-    else:
-        trimmed["link"] = ""
     return trimmed
 
 

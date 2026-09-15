@@ -4,7 +4,7 @@ from app.config import COURSES_FILE
 REQUIRED_COLUMNS = [
     "program", "subprogram", "course_title", "description", "modules", "urlslug",
     "min_qualification", "required_stream", "min_percentage", "duration",
-    "mode", "interest_tags", "career_outcomes", "prerequisite_course",
+    "mode", "interest_tags", "career_outcomes", "prerequisite_course", "real_link",
 ]
 
 

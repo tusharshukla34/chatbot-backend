@@ -131,10 +131,10 @@ def chat(req: ChatRequest):
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=REAL_PROGRAMS + ["Something else"])
 
         session["selected_program"] = program
+        subs = get_subprograms(program)
 
-        if program == "Fullstack Web":
+        if subs:
             session["browse_stage"] = "subprogram"
-            subs = get_subprograms(program)
             reply = f"{program} has a few tracks — which one interests you?"
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=subs + ["Something else"])

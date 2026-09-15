@@ -77,12 +77,15 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
         session["lead_stage"] = "done"
         session["lead_captured"] = True
 
+        from app.config import TEST_MODE
+        first_name_to_save = f"[TEST] {session['lead_data']['first_name']}" if TEST_MODE else session["lead_data"]["first_name"]
         save_lead(
             session_id=req.session_id,
-            first_name=session["lead_data"]["first_name"],
+            first_name=first_name_to_save,
             whatsapp_number=session["lead_data"]["whatsapp_number"],
             email=session["lead_data"]["email"],
         )
+
         send_lead_notification(
             first_name=session["lead_data"]["first_name"],
             whatsapp_number=session["lead_data"]["whatsapp_number"],

@@ -4,7 +4,12 @@ from app.config import CALLMEBOT_PHONE, CALLMEBOT_APIKEY
 CALLMEBOT_URL = "https://api.callmebot.com/whatsapp.php"
 
 
+from app.config import TEST_MODE
+
 def _send(message: str):
+    if TEST_MODE:
+        print("[WhatsApp] Skipped — TEST_MODE is on")
+        return
     if not CALLMEBOT_PHONE or not CALLMEBOT_APIKEY:
         print("[WhatsApp] Skipped — CALLMEBOT_PHONE or CALLMEBOT_APIKEY not set in .env")
         return
@@ -17,16 +22,6 @@ def _send(message: str):
             print(f"[WhatsApp] Failed ({response.status_code}): {response.text}")
     except requests.RequestException as e:
         print(f"[WhatsApp] Error sending notification: {e}")
-
-
-def send_lead_notification(first_name: str, whatsapp_number: str, email: str):
-    message = (
-        f"🎓 New Lead Captured\n"
-        f"Name: {first_name}\n"
-        f"WhatsApp: {whatsapp_number}\n"
-        f"Email: {email}"
-    )
-    _send(message)
 
 
 def send_recommendation_notification(first_name: str, whatsapp_number: str, email: str, recommended_courses: str):

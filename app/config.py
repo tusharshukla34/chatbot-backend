@@ -13,3 +13,4 @@ COURSE_PAGE_BASE_URL = os.getenv("COURSE_PAGE_BASE_URL", "")
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "20"))
 CALLMEBOT_PHONE = os.getenv("CALLMEBOT_PHONE", "")
 CALLMEBOT_APIKEY = os.getenv("CALLMEBOT_APIKEY", "")
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"

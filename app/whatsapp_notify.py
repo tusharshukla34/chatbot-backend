@@ -1,10 +1,8 @@
 import requests
-from app.config import CALLMEBOT_PHONE, CALLMEBOT_APIKEY
+from app.config import CALLMEBOT_PHONE, CALLMEBOT_APIKEY, TEST_MODE
 
 CALLMEBOT_URL = "https://api.callmebot.com/whatsapp.php"
 
-
-from app.config import TEST_MODE
 
 def _send(message: str):
     if TEST_MODE:
@@ -24,13 +22,23 @@ def _send(message: str):
         print(f"[WhatsApp] Error sending notification: {e}")
 
 
+def send_lead_notification(first_name: str, whatsapp_number: str, email: str):
+    message = (
+        f"🎓 New Lead Captured\n"
+        f"Name: {first_name}\n"
+        f"WhatsApp: {whatsapp_number}\n"
+        f"Email: {email}"
+    )
+    _send(message)
+
+
 def send_recommendation_notification(first_name: str, whatsapp_number: str, email: str, recommended_courses: str):
     message = (
-        f"📚 Courses Recommended\n"
+        f"📚 Courses Shown\n"
         f"Name: {first_name}\n"
         f"WhatsApp: {whatsapp_number}\n"
         f"Email: {email}\n"
-        f"Recommended: {recommended_courses}"
+        f"Courses: {recommended_courses}"
     )
     _send(message)
 

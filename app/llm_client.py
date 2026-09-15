@@ -21,6 +21,8 @@ Write in plain conversational sentences, no markdown tables or pipe symbols.
 Respond in plain natural language (NOT JSON) — just your reply text.
 """
 
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 def _parse_json(text: str) -> Dict[str, Any]:
     cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()

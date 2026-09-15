@@ -8,6 +8,10 @@ from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_
 from app.validators import is_valid_email, is_valid_phone, clean_phone
 from app.db import save_lead, save_course_interest, update_selected_course, get_connection
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
+import secrets
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from app.config import ADMIN_USERNAME, ADMIN_PASSWORD
 
 app = FastAPI(title="Course Advisor Chatbot")
 
@@ -20,7 +24,7 @@ app.add_middleware(
 
 
 @app.get("/admin/leads")
-def admin_leads():
+def admin_leads(username: str = Depends(verify_admin)):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT * FROM leads ORDER BY id DESC")
@@ -34,6 +38,18 @@ def admin_leads():
         "course_interest": [dict(row) for row in interests],
     }
 
+security = HTTPBasic()
+
+def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
     NON_NAME_WORDS = {

@@ -246,17 +246,3 @@ def mark_interest(req: MarkInterestRequest):
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-@app.delete("/admin/cleanup-test-data")
-def cleanup_test_data():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM leads WHERE first_name LIKE '[TEST]%'")
-    leads_deleted = cur.rowcount
-    cur.execute("DELETE FROM course_interest WHERE first_name LIKE '[TEST]%'")
-    interest_deleted = cur.rowcount
-    conn.commit()
-    cur.close()
-    conn.close()
-    return {"leads_deleted": leads_deleted, "course_interest_deleted": interest_deleted}

@@ -9,8 +9,9 @@ from app.db import save_lead, save_course_interest, update_selected_course, get_
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
 from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, ALLOWED_ORIGINS
 from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
-from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language, greeting_reply
+from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language, greeting_reply, course_interest_reply, detect_course_interest
 from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question, is_greeting
+
 
 app = FastAPI(title="Course Advisor Chatbot")
 
@@ -77,10 +78,13 @@ def get_pending_prompt(session: dict) -> tuple:
 
 
 def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
+
     NON_NAME_WORDS = {
         "hi", "hii", "hiii", "hello", "hey", "heya", "yo", "hola", "hell",
-        "ok", "okay", "sure", "yes", "no", "test", "namaste"
+        "ok", "okay", "sure", "yes", "no", "test", "namaste",
+        "ha", "haa", "haan", "yeah", "yep", "acha", "achha", "theek", "thik", "hmm", "hm",
     }
+
     text = req.message.strip()
     stage = session["lead_stage"]
 
@@ -159,10 +163,15 @@ def chat(req: ChatRequest):
         and session["lead_stage"] == "first_name"
         and not session["lead_data"]["first_name"]
     )
-    if is_very_first_message and is_greeting(text):
-        reply = greeting_reply()
-        append_message(req.session_id, "assistant", reply)
-        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+    if is_very_first_message:
+        if is_greeting(text):
+            reply = greeting_reply()
+            append_message(req.session_id, "assistant", reply)
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+        if detect_course_interest(text):
+            reply = course_interest_reply()
+            append_message(req.session_id, "assistant", reply)
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 
     # Answer general/off-topic questions at any point in the flow, then gently
     # continue where we left off — matches the student's language style.

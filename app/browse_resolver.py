@@ -22,6 +22,13 @@ SUBPROGRAM_KEYWORDS = {
     "Web": ["web", "html", "css", "javascript", "js"],
 }
 
+GREETING_WORDS = {"hi", "hii", "hiii", "hello", "hey", "heya", "yo", "hola", "namaste"}
+
+
+def is_greeting(text: str) -> bool:
+    t = text.strip().lower()
+    return t in GREETING_WORDS
+
 
 QUESTION_TRIGGERS = [
     "what", "how", "why", "explain", "write", "code", "give me", "tell me about",

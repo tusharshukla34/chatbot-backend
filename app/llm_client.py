@@ -47,6 +47,23 @@ Respond with ONLY the rewritten message in Hinglish, nothing else.
 """
 
 
+GREETING_REPLY_PROMPT = """A student just greeted you (said hi/hello). Reply with a short, warm
+greeting in Hinglish, asking what they'd like help with today — courses, career guidance, or
+anything else. Keep it to 1 sentence. Respond with ONLY the greeting message.
+"""
+
+
+def greeting_reply() -> str:
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "system", "content": GREETING_REPLY_PROMPT}, {"role": "user", "content": "hi"}],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Groq] greeting_reply failed: {e}")
+        return "Hello! Kaise madad kar sakta hoon aapki?"
+
 def mirror_language(message: str, student_text: str) -> str:
     try:
         response = client.chat.completions.create(

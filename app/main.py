@@ -8,9 +8,9 @@ from app.validators import is_valid_email, is_valid_phone, clean_phone
 from app.db import save_lead, save_course_interest, update_selected_course, get_connection
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
 from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, ALLOWED_ORIGINS
-from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language
-from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question
 from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
+from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language, greeting_reply
+from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question, is_greeting
 
 app = FastAPI(title="Course Advisor Chatbot")
 
@@ -151,6 +151,18 @@ def chat(req: ChatRequest):
     append_message(req.session_id, "user", req.message)
     session = get_session(req.session_id)
     text = req.message.strip()
+
+    # A plain greeting at the very start just gets a warm reply — we don't
+    # demand name/phone/email until the student actually asks for something.
+    is_very_first_message = (
+        not session["lead_captured"]
+        and session["lead_stage"] == "first_name"
+        and not session["lead_data"]["first_name"]
+    )
+    if is_very_first_message and is_greeting(text):
+        reply = greeting_reply()
+        append_message(req.session_id, "assistant", reply)
+        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 
     # Answer general/off-topic questions at any point in the flow, then gently
     # continue where we left off — matches the student's language style.

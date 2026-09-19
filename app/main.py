@@ -11,6 +11,8 @@ from app.validators import is_valid_email, is_valid_phone, clean_phone
 from app.db import save_lead, save_course_interest, update_selected_course, get_connection
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
 from app.config import ADMIN_USERNAME, ADMIN_PASSWORD
+from app.llm_client import interpret_program_from_text, general_followup, answer_general_question
+from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question
 
 app = FastAPI(title="Course Advisor Chatbot")
 
@@ -51,6 +53,30 @@ def admin_leads(username: str = Depends(verify_admin)):
         "leads": [dict(row) for row in leads],
         "course_interest": [dict(row) for row in interests],
     }
+
+def get_pending_prompt(session: dict) -> tuple:
+    """Returns (question_text, quick_replies) for whatever the bot is currently waiting on."""
+    if not session["lead_captured"]:
+        stage = session["lead_stage"]
+        if stage == "first_name":
+            return "By the way, could you share your name?", []
+        if stage == "whatsapp":
+            return "And what's your WhatsApp number?", []
+        if stage == "email":
+            return "And your email address?", []
+
+    stage = session["browse_stage"]
+    if stage == "education":
+        return "What's your current education level?", ["10th pass", "12th pass", "Graduate", "Something else"]
+    if stage == "program":
+        return "Which area are you interested in?", REAL_PROGRAMS + ["Something else"]
+    if stage == "subprogram":
+        subs = get_subprograms(session["selected_program"])
+        return f"Which {session['selected_program']} track interests you?", subs + ["Something else"]
+    if stage == "course":
+        titles = [c["title"] for c in session["shown_courses"]]
+        return "Which course would you like to know more about?", titles + ["Still deciding"]
+    return "Anything else you'd like to know?", []
 
 
 def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
@@ -123,10 +149,19 @@ def chat(req: ChatRequest):
     session = get_session(req.session_id)
     text = req.message.strip()
 
+    # Answer general/off-topic questions at any point in the flow, then gently
+    # continue where we left off — matches the student's language style.
+    if is_general_question(text):
+        answer = answer_general_question(text, session["history"])
+        pending_question, quick_replies = get_pending_prompt(session)
+        reply = f"{answer}\n\n{pending_question}"
+        append_message(req.session_id, "assistant", reply)
+        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies)
+
     if not session["lead_captured"]:
         return handle_lead_capture(req, session)
 
-    stage = session["browse_stage"]
+    # ... rest of your existing stage logic stays exactly the same below this
 
     # ---- Step 1: education level (informational, no filtering applied) ----
     if stage == "education":

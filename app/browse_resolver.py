@@ -23,6 +23,18 @@ SUBPROGRAM_KEYWORDS = {
 }
 
 
+QUESTION_TRIGGERS = [
+    "what", "how", "why", "explain", "write", "code", "give me", "tell me about",
+    "kaise", "kya", "konsi", "matlab", "kyu", "kaun", "batao",
+]
+
+
+def is_general_question(text: str) -> bool:
+    t = text.strip().lower()
+    if t.endswith("?"):
+        return True
+    return any(trigger in t for trigger in QUESTION_TRIGGERS)
+
 def resolve_program_exact(text: str) -> Optional[str]:
     t = text.strip().lower()
     for p in REAL_PROGRAMS:

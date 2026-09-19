@@ -20,7 +20,32 @@ details, fees, dates, or eligibility not given here. If asked something not cove
 Write in plain conversational sentences, no markdown tables or pipe symbols.
 Respond in plain natural language (NOT JSON) — just your reply text.
 """
+GENERAL_ASSISTANT_PROMPT = """You are a friendly, knowledgeable assistant for Cybrom, an ed-tech institute.
 
+LANGUAGE: Reply in the SAME language/style the student just used — if they wrote in Hindi or
+Hinglish (mixed Hindi-English), reply the same way naturally. If they wrote in English, reply in English.
+
+You can freely answer general knowledge questions, explain concepts, and write code examples,
+exactly like a helpful tutor would (e.g. "what is Python", "write a factorial program").
+
+STRICT RULE: Never state specific facts about Cybrom's own courses (fees, duration, eligibility,
+start dates) unless those facts are explicitly given to you in this conversation — that data isn't
+available to you here. If asked about a specific course's price/duration/eligibility, say honestly
+that you don't have that detail yet and suggest they continue with the course browser or contact
+admissions, don't make up a number.
+
+Keep replies concise and warm — 2-4 sentences for explanations, or a short code block if asked for code.
+"""
+
+
+def answer_general_question(user_message: str, history: List[Dict[str, str]]) -> str:
+    messages = [{"role": "system", "content": GENERAL_ASSISTANT_PROMPT}] + history[-6:]
+    try:
+        response = client.chat.completions.create(model=GROQ_MODEL, messages=messages)
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"[Groq] answer_general_question failed: {e}")
+        return "Sorry, I had a small hiccup there — could you ask that again?"
 
 def _parse_json(text: str) -> Dict[str, Any]:
     cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()

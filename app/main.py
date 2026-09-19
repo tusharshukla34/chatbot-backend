@@ -8,7 +8,7 @@ from app.validators import is_valid_email, is_valid_phone, clean_phone
 from app.db import save_lead, save_course_interest, update_selected_course, get_connection
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
 from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, ALLOWED_ORIGINS
-from app.llm_client import interpret_program_from_text, general_followup, answer_general_question
+from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language
 from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question
 from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
 
@@ -78,7 +78,7 @@ def get_pending_prompt(session: dict) -> tuple:
 
 def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
     NON_NAME_WORDS = {
-        "hi", "hii", "hiii", "hello", "hey", "heya", "yo", "hola",
+        "hi", "hii", "hiii", "hello", "hey", "heya", "yo", "hola", "hell",
         "ok", "okay", "sure", "yes", "no", "test", "namaste"
     }
     text = req.message.strip()
@@ -89,29 +89,34 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
         if (len(cleaned) < 2
                 or cleaned.lower() in NON_NAME_WORDS
                 or not cleaned.replace(" ", "").isalpha()):
-            reply = "That doesn't look like a name — could you share your name?"
+            base_reply = "That doesn't look like a name — could you share your name?"
+            reply = mirror_language(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
         session["lead_data"]["first_name"] = cleaned
         session["lead_stage"] = "whatsapp"
-        reply = f"Nice to meet you, {cleaned}! What's your WhatsApp number? (with country code if outside India)"
+        base_reply = f"Nice to meet you, {cleaned}! What's your WhatsApp number? (with country code if outside India)"
+        reply = mirror_language(base_reply, text)
         append_message(req.session_id, "assistant", reply)
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 
     if stage == "whatsapp":
         if not is_valid_phone(text):
-            reply = "That doesn't look like a valid number — could you enter a 10-digit WhatsApp number?"
+            base_reply = "That doesn't look like a valid number — could you enter a 10-digit WhatsApp number?"
+            reply = mirror_language(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
         session["lead_data"]["whatsapp_number"] = clean_phone(text)
         session["lead_stage"] = "email"
-        reply = "Great, thank you! And what's your email address?"
+        base_reply = "Great, thank you! And what's your email address?"
+        reply = mirror_language(base_reply, text)
         append_message(req.session_id, "assistant", reply)
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 
     if stage == "email":
         if not is_valid_email(text):
-            reply = "That doesn't look like a valid email — could you double check and re-enter it?"
+            base_reply = "That doesn't look like a valid email — could you double check and re-enter it?"
+            reply = mirror_language(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
         session["lead_data"]["email"] = text.strip()
@@ -134,7 +139,8 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
         )
 
         name = session["lead_data"]["first_name"]
-        reply = f"Perfect, all set {name}! What's your current education level?"
+        base_reply = f"Perfect, all set {name}! What's your current education level?"
+        reply = mirror_language(base_reply, text)
         append_message(req.session_id, "assistant", reply)
         quick_replies = ["10th pass", "12th pass", "Graduate", "Something else"]
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies)

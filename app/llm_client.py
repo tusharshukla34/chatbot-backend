@@ -38,6 +38,26 @@ admissions, don't make up a number.
 Keep replies concise and warm — 2-4 sentences for explanations, or a short code block if asked for code.
 """
 
+MIRROR_LANGUAGE_PROMPT = """Rewrite the following message in the same language/style as the
+student's last message (Hindi/Hinglish if they wrote that way, English if they wrote in English).
+Keep the exact same meaning and information. Respond with ONLY the rewritten message, nothing else.
+"""
+
+
+def mirror_language(message: str, student_text: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": MIRROR_LANGUAGE_PROMPT},
+                {"role": "user", "content": f"Student wrote: {student_text}\n\nMessage to rewrite: {message}"},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Groq] mirror_language failed: {e}")
+        return message
+
 
 def answer_general_question(user_message: str, history: List[Dict[str, str]]) -> str:
     messages = [{"role": "system", "content": GENERAL_ASSISTANT_PROMPT}] + history[-6:]

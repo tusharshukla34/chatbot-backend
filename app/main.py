@@ -4,19 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from app.schemas import ChatRequest, ChatResponse, MarkInterestRequest
 from app.session_store import get_session, append_message
-from app.llm_client import interpret_program_from_text, general_followup
-from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
-from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS
 from app.validators import is_valid_email, is_valid_phone, clean_phone
 from app.db import save_lead, save_course_interest, update_selected_course, get_connection
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
-from app.config import ADMIN_USERNAME, ADMIN_PASSWORD
+from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, ALLOWED_ORIGINS
 from app.llm_client import interpret_program_from_text, general_followup, answer_general_question
 from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question
+from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
 
 app = FastAPI(title="Course Advisor Chatbot")
-
-from app.config import ALLOWED_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,6 +49,7 @@ def admin_leads(username: str = Depends(verify_admin)):
         "leads": [dict(row) for row in leads],
         "course_interest": [dict(row) for row in interests],
     }
+
 
 def get_pending_prompt(session: dict) -> tuple:
     """Returns (question_text, quick_replies) for whatever the bot is currently waiting on."""
@@ -161,7 +158,7 @@ def chat(req: ChatRequest):
     if not session["lead_captured"]:
         return handle_lead_capture(req, session)
 
-    # ... rest of your existing stage logic stays exactly the same below this
+    stage = session["browse_stage"]
 
     # ---- Step 1: education level (informational, no filtering applied) ----
     if stage == "education":
@@ -216,7 +213,7 @@ def chat(req: ChatRequest):
         quick_replies = [c["title"] for c in courses] + ["Still deciding"]
         return ChatResponse(reply=reply, suggested_courses=courses, quick_replies=quick_replies)
 
-    # ---- Step 3: subprogram selection (Fullstack Web only) ----
+    # ---- Step 3: subprogram selection ----
     if stage == "subprogram":
         program = session["selected_program"]
         subs = get_subprograms(program)

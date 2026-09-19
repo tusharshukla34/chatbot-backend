@@ -25,7 +25,7 @@ SUBPROGRAM_KEYWORDS = {
 
 QUESTION_TRIGGERS = [
     "what", "how", "why", "explain", "write", "code", "give me", "tell me about",
-    "kaise", "kya", "konsi", "matlab", "kyu", "kaun", "batao",
+    "kaise", "kya", "konsi", "matlab", "kyu", "kaun", "batao", "seekhni", "seekhna",
 ]
 
 

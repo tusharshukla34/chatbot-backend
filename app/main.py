@@ -11,7 +11,7 @@ from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, ALLOWED_ORIGINS
 from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
 from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language, greeting_reply, course_interest_reply, detect_course_interest
 from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question, is_greeting
-
+from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language, greeting_reply, course_interest_reply, detect_course_interest, name_request_reply
 
 app = FastAPI(title="Course Advisor Chatbot")
 
@@ -93,8 +93,7 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
         if (len(cleaned) < 2
                 or cleaned.lower() in NON_NAME_WORDS
                 or not cleaned.replace(" ", "").isalpha()):
-            base_reply = "That doesn't look like a name — could you share your name?"
-            reply = mirror_language(base_reply, text)
+            reply = name_request_reply(text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
         session["lead_data"]["first_name"] = cleaned

@@ -64,6 +64,28 @@ differently (e.g. "mujhe course jaanna hai", "guide me", "what do you teach", "c
 Respond with ONLY the word YES or NO, nothing else.
 """
 
+NAME_REQUEST_REPLY_PROMPT = """The student just replied with something that isn't actually their
+name (e.g. an affirmation like "ha"/"yes"/"ok", a filler word, or something unrelated). Acknowledge
+what they said naturally and warmly in Hinglish (e.g. if they said "ha", respond like you're
+confirming you'll help them), then ask for their name so you can assist them. Keep it to 1-2 short
+sentences. Respond with ONLY the reply message.
+"""
+
+
+def name_request_reply(student_text: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": NAME_REQUEST_REPLY_PROMPT},
+                {"role": "user", "content": student_text},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Groq] name_request_reply failed: {e}")
+        return "Theek hai, main aapki madad karunga — pehle apna naam bata dijiye?"
+
 
 def _parse_json(text: str) -> Dict[str, Any]:
     cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()

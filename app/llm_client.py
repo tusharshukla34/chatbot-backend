@@ -46,11 +46,56 @@ Keep the exact same meaning and information, and keep any names/numbers/emails e
 Respond with ONLY the rewritten message in Hinglish, nothing else.
 """
 
-
 GREETING_REPLY_PROMPT = """A student just greeted you (said hi/hello). Reply with a short, warm
 greeting in Hinglish, asking what they'd like help with today — courses, career guidance, or
 anything else. Keep it to 1 sentence. Respond with ONLY the greeting message.
 """
+
+COURSE_INTEREST_REPLY_PROMPT = """The student just said they're interested in courses. Reply
+warmly in Hinglish, something like "Haan, main aapko courses bata sakta hoon, uske pehle aapka
+naam bata dijiye" — telling them you'll help with courses, but first need their name. Keep it to
+1 short sentence. Respond with ONLY the reply message.
+"""
+
+COURSE_INTEREST_CHECK_PROMPT = """A student sent a message. Decide if they are expressing interest
+in learning about courses, career guidance, or what the institute offers — even if phrased
+differently (e.g. "mujhe course jaanna hai", "guide me", "what do you teach", "career advice chahiye").
+
+Respond with ONLY the word YES or NO, nothing else.
+"""
+
+
+def _parse_json(text: str) -> Dict[str, Any]:
+    cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+    return json.loads(cleaned)
+
+
+def detect_course_interest(text: str) -> bool:
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": COURSE_INTEREST_CHECK_PROMPT},
+                {"role": "user", "content": text},
+            ],
+        )
+        result = response.choices[0].message.content.strip().upper()
+        return result.startswith("YES")
+    except Exception as e:
+        print(f"[Groq] detect_course_interest failed: {e}")
+        return False
+
+
+def course_interest_reply() -> str:
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "system", "content": COURSE_INTEREST_REPLY_PROMPT}, {"role": "user", "content": "courses"}],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Groq] course_interest_reply failed: {e}")
+        return "Haan, main aapko courses bata sakta hoon — uske pehle aapka naam bata dijiye?"
 
 
 def greeting_reply() -> str:
@@ -63,6 +108,7 @@ def greeting_reply() -> str:
     except Exception as e:
         print(f"[Groq] greeting_reply failed: {e}")
         return "Hello! Kaise madad kar sakta hoon aapki?"
+
 
 def mirror_language(message: str, student_text: str) -> str:
     try:
@@ -87,10 +133,6 @@ def answer_general_question(user_message: str, history: List[Dict[str, str]]) ->
     except Exception as e:
         print(f"[Groq] answer_general_question failed: {e}")
         return "Sorry, I had a small hiccup there — could you ask that again?"
-
-def _parse_json(text: str) -> Dict[str, Any]:
-    cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
-    return json.loads(cleaned)
 
 
 def interpret_program_from_text(text: str) -> str:

@@ -9,9 +9,12 @@ from app.db import save_lead, save_course_interest, update_selected_course, get_
 from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
 from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, ALLOWED_ORIGINS
 from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
-from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language, greeting_reply, course_interest_reply, detect_course_interest
 from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question, is_greeting
-from app.llm_client import interpret_program_from_text, general_followup, answer_general_question, mirror_language, greeting_reply, course_interest_reply, detect_course_interest, name_request_reply
+from app.llm_client import (
+    interpret_program_from_text, general_followup, answer_general_question,
+    mirror_language, greeting_reply, course_interest_reply, detect_course_interest,
+    name_request_reply, localize_reply, is_actually_a_name,
+)
 
 app = FastAPI(title="Course Advisor Chatbot")
 
@@ -90,12 +93,27 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
 
     if stage == "first_name":
         cleaned = text.strip()
-        if (len(cleaned) < 2
-                or cleaned.lower() in NON_NAME_WORDS
-                or not cleaned.replace(" ", "").isalpha()):
+        fast_invalid = (
+            len(cleaned) < 2
+            or cleaned.lower() in NON_NAME_WORDS
+            or not cleaned.replace(" ", "").isalpha()
+        )
+        is_invalid = fast_invalid or (not fast_invalid and not is_actually_a_name(cleaned))
+
+        if is_invalid:
+            session["name_attempts"] += 1
+            if session["name_attempts"] >= 3:
+                session["lead_data"]["first_name"] = "Student"
+                session["lead_stage"] = "whatsapp"
+                base_reply = "No problem, let's continue! What's your WhatsApp number? (with country code if outside India)"
+                reply = localize_reply(base_reply, text)
+                append_message(req.session_id, "assistant", reply)
+                return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+
             reply = name_request_reply(text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+
         session["lead_data"]["first_name"] = cleaned
         session["lead_stage"] = "whatsapp"
         base_reply = f"Nice to meet you, {cleaned}! What's your WhatsApp number? (with country code if outside India)"
@@ -155,8 +173,6 @@ def chat(req: ChatRequest):
     session = get_session(req.session_id)
     text = req.message.strip()
 
-    # A plain greeting at the very start just gets a warm reply — we don't
-    # demand name/phone/email until the student actually asks for something.
     is_very_first_message = (
         not session["lead_captured"]
         and session["lead_stage"] == "first_name"
@@ -172,12 +188,11 @@ def chat(req: ChatRequest):
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 
-    # Answer general/off-topic questions at any point in the flow, then gently
-    # continue where we left off — matches the student's language style.
     if is_general_question(text):
         answer = answer_general_question(text, session["history"])
         pending_question, quick_replies = get_pending_prompt(session)
-        reply = f"{answer}\n\n{pending_question}"
+        localized_question = localize_reply(pending_question, text)
+        reply = f"{answer}\n\n{localized_question}"
         append_message(req.session_id, "assistant", reply)
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies)
 
@@ -186,16 +201,18 @@ def chat(req: ChatRequest):
 
     stage = session["browse_stage"]
 
-    # ---- Step 1: education level (informational, no filtering applied) ----
+    # ---- Step 1: education level ----
     if stage == "education":
         if len(text) < 2:
-            reply = "Could you tell me your education level?"
+            base_reply = "Could you tell me your education level?"
+            reply = localize_reply(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[],
                                  quick_replies=["10th pass", "12th pass", "Graduate", "Something else"])
         session["profile"]["education_level"] = text
         session["browse_stage"] = "program"
-        reply = "Great! Which area are you interested in?"
+        base_reply = "Great! Which area are you interested in?"
+        reply = localize_reply(base_reply, text)
         append_message(req.session_id, "assistant", reply)
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=REAL_PROGRAMS + ["Something else"])
 
@@ -205,7 +222,8 @@ def chat(req: ChatRequest):
         if not program:
             program = interpret_program_from_text(text)
         if not program:
-            reply = "I couldn't quite match that. Could you pick one of these areas?"
+            base_reply = "I couldn't quite match that. Could you pick one of these areas?"
+            reply = localize_reply(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=REAL_PROGRAMS + ["Something else"])
 
@@ -214,7 +232,8 @@ def chat(req: ChatRequest):
 
         if subs:
             session["browse_stage"] = "subprogram"
-            reply = f"{program} has a few tracks — which one interests you?"
+            base_reply = f"{program} has a few tracks — which one interests you?"
+            reply = localize_reply(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=subs + ["Something else"])
 
@@ -234,7 +253,8 @@ def chat(req: ChatRequest):
             email=lead["email"], recommended_courses=", ".join(c["title"] for c in courses),
         )
 
-        reply = f"Here are all our {program} courses — tap one to see details!"
+        base_reply = f"Here are all our {program} courses — tap one to see details!"
+        reply = localize_reply(base_reply, text)
         append_message(req.session_id, "assistant", reply)
         quick_replies = [c["title"] for c in courses] + ["Still deciding"]
         return ChatResponse(reply=reply, suggested_courses=courses, quick_replies=quick_replies)
@@ -245,7 +265,8 @@ def chat(req: ChatRequest):
         subs = get_subprograms(program)
         subprogram = resolve_subprogram(subs, text)
         if not subprogram:
-            reply = "Please pick one of the tracks shown, or tell me which interests you."
+            base_reply = "Please pick one of the tracks shown, or tell me which interests you."
+            reply = localize_reply(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=subs + ["Something else"])
 
@@ -266,7 +287,8 @@ def chat(req: ChatRequest):
             email=lead["email"], recommended_courses=", ".join(c["title"] for c in courses),
         )
 
-        reply = f"Here are our {subprogram} courses — tap one to see details!"
+        base_reply = f"Here are our {subprogram} courses — tap one to see details!"
+        reply = localize_reply(base_reply, text)
         append_message(req.session_id, "assistant", reply)
         quick_replies = [c["title"] for c in courses] + ["Still deciding"]
         return ChatResponse(reply=reply, suggested_courses=courses, quick_replies=quick_replies)
@@ -276,7 +298,8 @@ def chat(req: ChatRequest):
         titles = [c["title"] for c in session["shown_courses"]]
 
         if text == "Still deciding":
-            reply = "No worries, take your time! Let me know if you have any questions about these courses."
+            base_reply = "No worries, take your time! Let me know if you have any questions about these courses."
+            reply = localize_reply(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=titles + ["Still deciding"])
 
@@ -290,16 +313,16 @@ def chat(req: ChatRequest):
                 first_name=lead["first_name"], whatsapp_number=lead["whatsapp_number"],
                 email=lead["email"], selected_course=text,
             )
-            reply = f"Great choice! I've noted your interest in {text}. Our team will reach out with next steps. Anything else you'd like to know?"
+            base_reply = f"Great choice! I've noted your interest in {text}. Our team will reach out with next steps. Anything else you'd like to know?"
+            reply = localize_reply(base_reply, text)
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
 
-        # free-text question while browsing this course list
         reply = general_followup(session["history"], session["shown_courses"])
         append_message(req.session_id, "assistant", reply)
         return ChatResponse(reply=reply, suggested_courses=[], quick_replies=titles + ["Still deciding"])
 
-    # ---- Step 5: after a final selection, just chat normally ----
+    # ---- Step 5: after a final selection ----
     reply = general_followup(session["history"], session["shown_courses"])
     append_message(req.session_id, "assistant", reply)
     return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])

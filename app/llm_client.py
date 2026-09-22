@@ -71,6 +71,60 @@ confirming you'll help them), then ask for their name so you can assist them. Ke
 sentences. Respond with ONLY the reply message.
 """
 
+LOCALIZE_PROMPT = """Default language: warm, natural Hindi-English mixed style (Hinglish), like a
+friendly Indian ed-tech counselor speaking casually.
+
+If the student's last message is a clear, proper English sentence (not just a single English word
+or a short greeting), reply in plain English instead. Otherwise, always default to Hinglish.
+
+Rewrite the given message accordingly. Keep the EXACT same meaning, and keep any names, course
+titles, numbers, or emails exactly as given — do not translate proper nouns. Respond with ONLY the
+rewritten message, nothing else.
+"""
+
+NAME_CLASSIFY_PROMPT = """A student was asked for their name. Decide if their message is actually
+a person's name (in any language/script), or if it's something else entirely — a question, a
+refusal, a greeting, or unrelated text (e.g. "who are you", "why do you need it", "no thanks").
+
+Respond with ONLY one word: NAME or NOT_NAME.
+"""
+
+
+def _parse_json(text: str) -> Dict[str, Any]:
+    cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+    return json.loads(cleaned)
+
+
+def is_actually_a_name(text: str) -> bool:
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": NAME_CLASSIFY_PROMPT},
+                {"role": "user", "content": text},
+            ],
+        )
+        result = response.choices[0].message.content.strip().upper()
+        return result.startswith("NAME")
+    except Exception as e:
+        print(f"[Groq] is_actually_a_name failed: {e}")
+        return True  # fail open
+
+
+def localize_reply(message: str, student_text: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": LOCALIZE_PROMPT},
+                {"role": "user", "content": f"Student's last message: {student_text}\n\nMessage to rewrite: {message}"},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Groq] localize_reply failed: {e}")
+        return message
+
 
 def name_request_reply(student_text: str) -> str:
     try:
@@ -85,11 +139,6 @@ def name_request_reply(student_text: str) -> str:
     except Exception as e:
         print(f"[Groq] name_request_reply failed: {e}")
         return "Theek hai, main aapki madad karunga — pehle apna naam bata dijiye?"
-
-
-def _parse_json(text: str) -> Dict[str, Any]:
-    cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
-    return json.loads(cleaned)
 
 
 def detect_course_interest(text: str) -> bool:

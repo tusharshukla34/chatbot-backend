@@ -12,7 +12,8 @@ def get_session(session_id: str) -> Dict[str, Any]:
             "lead_captured": False,
             "lead_stage": "first_name",
             "lead_data": {"first_name": "", "whatsapp_number": "", "email": ""},
-            "browse_stage": "education",   # education -> program -> subprogram -> course -> post_selection
+            "name_attempts": 0,
+            "browse_stage": "education",
             "selected_program": "",
             "selected_subprogram": "",
             "shown_courses": [],

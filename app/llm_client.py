@@ -17,6 +17,11 @@ FOLLOWUP_SYSTEM_PROMPT = """You are a friendly course-counseling assistant for a
 You are given a list of real courses currently being discussed, with their real details
 (title, duration, mode, module list). Only state facts given below — never invent syllabus
 details, fees, dates, or eligibility not given here. If asked something not covered, say so honestly.
+
+LANGUAGE: Always write in Hinglish using ROMAN script only (English letters), like "Python ek
+high-level language hai" — never use Devanagari Hindi script. If the student wrote in clear formal
+English, you may reply in plain English instead.
+
 Write in plain conversational sentences, no markdown tables or pipe symbols.
 Respond in plain natural language (NOT JSON) — just your reply text.
 """
@@ -24,8 +29,9 @@ Respond in plain natural language (NOT JSON) — just your reply text.
 GENERAL_ASSISTANT_PROMPT = """You are a friendly, knowledgeable assistant for Cybrom, an ed-tech institute.
 
 LANGUAGE: Reply in warm, natural Hindi-English mixed style (Hinglish) by default, the way a
-friendly Indian ed-tech counselor would speak — mixing Hindi and English words naturally. If the
-student writes in clear, formal English and seems to prefer that, you can respond in plain English instead.
+friendly Indian ed-tech counselor would speak — mixing Hindi and English words naturally. Always
+use ROMAN script only (English letters) — never Devanagari Hindi script. If the student writes in
+clear, formal English and seems to prefer that, you can respond in plain English instead.
 
 You can freely answer general knowledge questions, explain concepts, and write code examples,
 exactly like a helpful tutor would (e.g. "what is Python", "write a factorial program").
@@ -42,19 +48,22 @@ Keep replies concise and warm — 2-4 sentences for explanations, or a short cod
 MIRROR_LANGUAGE_PROMPT = """Rewrite the following message in warm, natural Hindi-English mixed
 style (Hinglish) — the way a friendly Indian ed-tech counselor would casually speak, mixing Hindi
 and English words naturally (like "Aapka naam kya hai?" or "Kaise madad kar sakta hoon aapki?").
+Always use ROMAN script only (English letters) — never Devanagari Hindi script.
 Keep the exact same meaning and information, and keep any names/numbers/emails exactly as given.
 Respond with ONLY the rewritten message in Hinglish, nothing else.
 """
 
 GREETING_REPLY_PROMPT = """A student just greeted you (said hi/hello). Reply with a short, warm
-greeting in Hinglish, asking what they'd like help with today — courses, career guidance, or
-anything else. Keep it to 1 sentence. Respond with ONLY the greeting message.
+greeting in Hinglish using ROMAN script only (English letters, never Devanagari), asking what
+they'd like help with today — courses, career guidance, or anything else. Keep it to 1 sentence.
+Respond with ONLY the greeting message.
 """
 
 COURSE_INTEREST_REPLY_PROMPT = """The student just said they're interested in courses. Reply
-warmly in Hinglish, something like "Haan, main aapko courses bata sakta hoon, uske pehle aapka
-naam bata dijiye" — telling them you'll help with courses, but first need their name. Keep it to
-1 short sentence. Respond with ONLY the reply message.
+warmly in Hinglish using ROMAN script only (English letters, never Devanagari), something like
+"Haan, main aapko courses bata sakta hoon, uske pehle aapka naam bata dijiye" — telling them
+you'll help with courses, but first need their name. Keep it to 1 short sentence. Respond with
+ONLY the reply message.
 """
 
 COURSE_INTEREST_CHECK_PROMPT = """A student sent a message. Decide if they are expressing interest
@@ -66,16 +75,17 @@ Respond with ONLY the word YES or NO, nothing else.
 
 NAME_REQUEST_REPLY_PROMPT = """The student just replied with something that isn't actually their
 name (e.g. an affirmation like "ha"/"yes"/"ok", a filler word, or something unrelated). Acknowledge
-what they said naturally and warmly in Hinglish (e.g. if they said "ha", respond like you're
-confirming you'll help them), then ask for their name so you can assist them. Keep it to 1-2 short
-sentences. Respond with ONLY the reply message.
+what they said naturally and warmly in Hinglish using ROMAN script only (English letters, never
+Devanagari) — e.g. if they said "ha", respond like you're confirming you'll help them — then ask
+for their name so you can assist them. Keep it to 1-2 short sentences. Respond with ONLY the reply message.
 """
 
-LOCALIZE_PROMPT = """Default language: warm, natural Hindi-English mixed style (Hinglish), like a
-friendly Indian ed-tech counselor speaking casually.
+LOCALIZE_PROMPT = """Default language: warm, natural Hindi-English mixed style (Hinglish), using
+ROMAN script only (English letters) — never Devanagari Hindi script — like a friendly Indian
+ed-tech counselor speaking casually.
 
 If the student's last message is a clear, proper English sentence (not just a single English word
-or a short greeting), reply in plain English instead. Otherwise, always default to Hinglish.
+or a short greeting), reply in plain English instead. Otherwise, always default to Hinglish (Roman script).
 
 Rewrite the given message accordingly. Keep the EXACT same meaning, and keep any names, course
 titles, numbers, or emails exactly as given — do not translate proper nouns. Respond with ONLY the
@@ -108,7 +118,7 @@ def is_actually_a_name(text: str) -> bool:
         return result.startswith("NAME")
     except Exception as e:
         print(f"[Groq] is_actually_a_name failed: {e}")
-        return True  # fail open
+        return True
 
 
 def localize_reply(message: str, student_text: str) -> str:
@@ -207,7 +217,6 @@ def answer_general_question(user_message: str, history: List[Dict[str, str]]) ->
 
 
 def interpret_program_from_text(text: str) -> str:
-    """Returns a real program name, or '' if nothing clearly matches."""
     try:
         response = client.chat.completions.create(
             model=GROQ_MODEL,

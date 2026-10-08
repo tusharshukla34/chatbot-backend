@@ -259,6 +259,7 @@ def find_subprogram_in_catalog(text: str) -> Optional[Tuple[str, str]]:
         "java": ("Fullstack Web", "Java"),
         "springboot": ("Fullstack Web", "Java"),
         "ethical hacking": ("Cyber Security", "Cyber Security & Ethical Hacking"),
+        "cyber": ("Cyber Security", "Cyber Security & Ethical Hacking"),
         "cyber security": ("Cyber Security", "Cyber Security & Ethical Hacking"),
         "cybersecurity": ("Cyber Security", "Cyber Security & Ethical Hacking"),
         "devops": ("Cyber Security", "DevOps & Cloud"),
@@ -628,6 +629,56 @@ def chat(req: ChatRequest, request: Request):
 
         subprogram = resolve_subprogram(subs, raw_text)
         if not subprogram:
+            # Check if user mentioned another program or track from another domain
+            switch_prog = resolve_program_exact(raw_text) or interpret_program_from_text(raw_text)
+            if switch_prog and switch_prog.lower() != program.lower():
+                session["selected_program"] = switch_prog
+                new_subs = get_subprograms(switch_prog)
+                if new_subs:
+                    session["browse_stage"] = "subprogram"
+                    save_session(req.session_id, session)
+                    base_reply = f"Bilkul! Chaliye {switch_prog} explore karte hain. Isme ye popular tracks hain — kaunsa aapko interest karta hai?"
+                    reply = localize_reply(base_reply, raw_text)
+                    append_message(req.session_id, "assistant", reply)
+                    return ChatResponse(reply=reply, quick_replies=new_subs + ["Something else"], step=3, step_label="Mode")
+                else:
+                    courses = get_courses_by_program(switch_prog)
+                    session["shown_courses"] = courses
+                    session["browse_stage"] = "course"
+                    save_session(req.session_id, session)
+                    base_reply = f"Bilkul! Yeh rahe hamare {switch_prog} courses — ek pe tap karke details dekhein!"
+                    reply = localize_reply(base_reply, raw_text)
+                    append_message(req.session_id, "assistant", reply)
+                    quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+                    return ChatResponse(
+                        reply=reply,
+                        suggested_courses=courses,
+                        quick_replies=quick_replies,
+                        step=4,
+                        step_label="Matches",
+                    )
+
+            cat_match = find_subprogram_in_catalog(raw_text)
+            if cat_match:
+                cat_prog, cat_sub = cat_match
+                session["selected_program"] = cat_prog
+                session["selected_subprogram"] = cat_sub
+                courses = get_courses_by_subprogram(cat_prog, cat_sub)
+                session["shown_courses"] = courses
+                session["browse_stage"] = "course"
+                save_session(req.session_id, session)
+                base_reply = f"Zaroor! Yeh rahe hamare {cat_sub} ({cat_prog}) courses — ek pe tap karke syllabus check karein!"
+                reply = localize_reply(base_reply, raw_text)
+                append_message(req.session_id, "assistant", reply)
+                quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+                return ChatResponse(
+                    reply=reply,
+                    suggested_courses=courses,
+                    quick_replies=quick_replies,
+                    step=4,
+                    step_label="Matches",
+                )
+
             base_reply = "Please pick one of the tracks shown, or tell me which interests you."
             reply = localize_reply(base_reply, raw_text)
             append_message(req.session_id, "assistant", reply)
@@ -666,7 +717,7 @@ def chat(req: ChatRequest, request: Request):
         )
 
     # Step 4: Exact Course Selection & Discussion
-    if stage == "course":
+    if stage in ["course", "post_selection"]:
         titles = [c.get("title", "") for c in session.get("shown_courses", [])]
 
         if raw_text == "Still deciding":
@@ -696,35 +747,46 @@ def chat(req: ChatRequest, request: Request):
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=4, step_label="Matches")
 
         # Check if student is asking to switch to another program or track
-        # A. Direct program match (e.g. "Fullstack Web", "Web Development", "Cyber Security", "Digital Marketing")
+        # A. Direct program match (e.g. "Fullstack Web", "Web Development", "Cyber Security", "cyber", "Digital Marketing")
         switch_prog = resolve_program_exact(raw_text) or interpret_program_from_text(raw_text)
         current_prog = session.get("selected_program", "")
-        if switch_prog and switch_prog.lower() != current_prog.lower():
-            session["selected_program"] = switch_prog
-            subs = get_subprograms(switch_prog)
-            if subs:
-                session["browse_stage"] = "subprogram"
-                save_session(req.session_id, session)
-                base_reply = f"Bilkul! Chaliye {switch_prog} explore karte hain. Isme ye popular tracks hain — kaunsa aapko interest karta hai?"
-                reply = localize_reply(base_reply, raw_text)
-                append_message(req.session_id, "assistant", reply)
-                return ChatResponse(reply=reply, quick_replies=subs + ["Something else"], step=3, step_label="Mode")
+        if switch_prog:
+            if switch_prog.lower() != current_prog.lower():
+                session["selected_program"] = switch_prog
+                subs = get_subprograms(switch_prog)
+                if subs:
+                    session["browse_stage"] = "subprogram"
+                    save_session(req.session_id, session)
+                    base_reply = f"Bilkul! Chaliye {switch_prog} explore karte hain. Isme ye popular tracks hain — kaunsa aapko interest karta hai?"
+                    reply = localize_reply(base_reply, raw_text)
+                    append_message(req.session_id, "assistant", reply)
+                    return ChatResponse(reply=reply, quick_replies=subs + ["Something else"], step=3, step_label="Mode")
+                else:
+                    courses = get_courses_by_program(switch_prog)
+                    session["shown_courses"] = courses
+                    session["browse_stage"] = "course"
+                    save_session(req.session_id, session)
+                    base_reply = f"Bilkul! Yeh rahe hamare {switch_prog} courses — ek pe tap karke details dekhein!"
+                    reply = localize_reply(base_reply, raw_text)
+                    append_message(req.session_id, "assistant", reply)
+                    quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+                    return ChatResponse(
+                        reply=reply,
+                        suggested_courses=courses,
+                        quick_replies=quick_replies,
+                        step=4,
+                        step_label="Matches",
+                    )
             else:
-                courses = get_courses_by_program(switch_prog)
-                session["shown_courses"] = courses
-                session["browse_stage"] = "course"
-                save_session(req.session_id, session)
-                base_reply = f"Bilkul! Yeh rahe hamare {switch_prog} courses — ek pe tap karke details dekhein!"
-                reply = localize_reply(base_reply, raw_text)
-                append_message(req.session_id, "assistant", reply)
-                quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
-                return ChatResponse(
-                    reply=reply,
-                    suggested_courses=courses,
-                    quick_replies=quick_replies,
-                    step=4,
-                    step_label="Matches",
-                )
+                # Same program re-mentioned: re-show its subprograms or courses
+                subs = get_subprograms(switch_prog)
+                if subs:
+                    session["browse_stage"] = "subprogram"
+                    save_session(req.session_id, session)
+                    base_reply = f"Hamare paas {switch_prog} mein ye tracks hain — kaunsa aapko pasand aayega?"
+                    reply = localize_reply(base_reply, raw_text)
+                    append_message(req.session_id, "assistant", reply)
+                    return ChatResponse(reply=reply, quick_replies=subs + ["Something else"], step=3, step_label="Mode")
 
         # B. Direct track/subprogram match (e.g. "MERN", "Ethical Hacking", "Data Analytics")
         cat_match = find_subprogram_in_catalog(raw_text)

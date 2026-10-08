@@ -255,17 +255,56 @@ Respond with ONLY the program name or NONE. No other text."""
     return raw if raw in valid else ""
 
 
-def general_followup(history: List[Dict[str, str]], shown_courses: List[Dict[str, Any]]) -> str:
-    """Handles follow-up discussion about currently displayed courses."""
+def general_followup(
+    history: List[Dict[str, str]],
+    shown_courses: List[Dict[str, Any]],
+    user_message: str = "",
+    selected_program: str = "",
+    selected_subprogram: str = "",
+) -> str:
+    """Intelligently handles consultative discussion about courses, dislikes, and career options."""
     catalog = "\n".join(
         f"- {c.get('title', '')} | duration: {c.get('duration', 'Contact us')} | mode: {c.get('mode', 'Contact us')} "
         f"| modules: {', '.join(c.get('modules_preview', []))}"
-        for c in shown_courses[:6]
+        for c in (shown_courses or [])[:6]
     )
-    prompt = SYSTEM_GUARDRAIL + f"\nCOURSES CURRENTLY DISCUSSED:\n{catalog}\nOnly state facts given above."
-    messages = [{"role": "system", "content": prompt}] + history[-6:]
+
+    counselor_prompt = SYSTEM_GUARDRAIL + f"""
+You are Cybrom's Senior Admissions Counselor. You are having an intelligent, empathetic, consultative conversation with a prospective student.
+
+CURRENT CONTEXT:
+Program: {selected_program or "Technology Courses"}
+Track: {selected_subprogram or "Selected Track"}
+Courses currently shown to the student:
+{catalog}
+
+OTHER PROGRAMS AVAILABLE AT CYBROM:
+- Fullstack Web Development (MERN Stack: React/Node.js, Java with Spring Boot, Python Full Stack)
+- Cyber Security & Ethical Hacking (Ethical Hacking, DevOps & Cloud)
+- Data Programs (Data Analytics: Power BI, SQL, Excel - minimal coding; Data Science)
+- AI-ML (Generative AI, Agentic AI, MLOps, IoT)
+- Digital Marketing (100% Non-coding, SEO, Performance Ads, Content)
+
+COUNSELOR INSTRUCTIONS:
+1. ACTIVE LISTENING & EMPATHY:
+   - If the student expresses a dislike or constraint (e.g. "mujhe python nahi pasand", "coding nahi aati", "maths weak hai", "time kam hai", "kuch aur dikhao"):
+     * NEVER repeat or push the courses/technologies they just expressed dislike for!
+     * Acknowledge their preference warmly and empathetically.
+     * Explain their options honestly: If they dislike Python, explain that AI-ML relies heavily on Python, but Cybrom has fantastic alternative career paths like Fullstack Web (MERN / React / Java), Data Analytics (Power BI / SQL / Excel), Cyber Security & Ethical Hacking, or Digital Marketing.
+     * End with a friendly question asking which of these alternate paths they'd like to explore.
+2. COURSE QUESTIONS & ADVICE:
+   - If the student asks about a specific course, syllabus modules, career outcomes, or eligibility, give clear, encouraging guidance using the catalog details above.
+   - If asking about specific fees, batch schedules, or placement guarantees, politely clarify that admission counseling customizes fee structures and batch timings, and offer to have a counselor connect with them.
+3. TONE & SCRIPT:
+   - Always speak in natural, friendly Roman-script Hinglish (English alphabet only, NEVER Devanagari Hindi). If the student wrote in formal English, reply in plain English.
+   - Keep answers concise and sharp (2-4 sentences max). Always end with a helpful question to guide them forward.
+"""
+    hist_msgs = list(history[-8:]) if history else []
+    if user_message and (not hist_msgs or hist_msgs[-1].get("content") != user_message):
+        hist_msgs.append({"role": "user", "content": user_message[:600]})
+    messages = [{"role": "system", "content": counselor_prompt}] + hist_msgs
     reply = _safe_chat_call(messages, temperature=0.4)
-    return reply or "In courses ke baare mein aap kuch bhi pooch sakte hain ya directly syllabus dekh sakte hain!"
+    return reply or "Aapke career goals ke hisaab se hum sahi course choose karne mein aapki poori madad karenge. Aap kis direction mein aage badhna chahte hain?"
 
 
 def handoff_reply() -> str:

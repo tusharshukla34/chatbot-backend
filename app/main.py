@@ -4,7 +4,7 @@ import logging
 import secrets
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,7 @@ from app.db import (
     save_lead,
     update_selected_course,
 )
+from app.course_store import course_store
 from app.logging_config import setup_structured_logging
 from app.matching import (
     get_courses_by_program,
@@ -234,6 +235,54 @@ def get_pending_prompt(session: Dict[str, Any]) -> Tuple[str, List[str], int, st
     return "Anything else you'd like to know?", [], 4, "Matches"
 
 
+def expresses_alternative_or_dislike(text: str) -> bool:
+    """Detects if student expresses dislike of a topic, wants alternatives, or asks for a different domain."""
+    t = text.strip().lower()
+    dislike_keywords = [
+        "nahi pasand", "pasand nahi", "not interested", "dont like", "don't like",
+        "nahi karni", "nahi karna", "nahi chahiye", "kuch aur", "koi aur",
+        "no python", "without python", "without coding", "non coding", "non-coding",
+        "bina coding", "maths weak", "alternative", "other options", "dusra option",
+        "dusre course", "different course", "change track", "switch", "kuch dusra"
+    ]
+    return any(k in t for k in dislike_keywords)
+
+
+def find_subprogram_in_catalog(text: str) -> Optional[Tuple[str, str]]:
+    """Matches text against any known track/subprogram in the catalog."""
+    t = text.strip().lower()
+    aliases = {
+        "mern": ("Fullstack Web", "MERNSTACK"),
+        "mernstack": ("Fullstack Web", "MERNSTACK"),
+        "react": ("Fullstack Web", "MERNSTACK"),
+        "node": ("Fullstack Web", "MERNSTACK"),
+        "java": ("Fullstack Web", "Java"),
+        "springboot": ("Fullstack Web", "Java"),
+        "ethical hacking": ("Cyber Security", "Cyber Security & Ethical Hacking"),
+        "cyber security": ("Cyber Security", "Cyber Security & Ethical Hacking"),
+        "cybersecurity": ("Cyber Security", "Cyber Security & Ethical Hacking"),
+        "devops": ("Cyber Security", "DevOps & Cloud"),
+        "cloud": ("Cyber Security", "DevOps & Cloud"),
+        "aws": ("Cyber Security", "DevOps & Cloud"),
+        "data analytics": ("Data Programs", "Data Analytics"),
+        "data analyst": ("Data Programs", "Data Analytics"),
+        "power bi": ("Data Programs", "Data Analytics"),
+        "powerbi": ("Data Programs", "Data Analytics"),
+        "sql": ("Data Programs", "Data Analytics"),
+    }
+    for alias, result in aliases.items():
+        if alias in t:
+            return result
+
+    all_courses = course_store.all_courses()
+    for c in all_courses:
+        p = c.get("program", "")
+        s = (c.get("subprogram") or "").strip()
+        if s and (t == s.lower() or t in s.lower() or (len(t) > 3 and t in s.lower())):
+            return p, s
+    return None
+
+
 def is_answering_current_flow(session: Dict[str, Any], text: str) -> bool:
     """Returns True if user text directly fulfills the pending step and shouldn't be hijacked as an interruption."""
     t = text.strip()
@@ -271,6 +320,10 @@ def is_answering_current_flow(session: Dict[str, Any], text: str) -> bool:
         shown = session.get("shown_courses", [])
         titles = [c.get("title", "").strip().lower() for c in shown]
         if t.lower() == "still deciding" or t.lower() in titles:
+            return True
+        if expresses_alternative_or_dislike(t):
+            return True
+        if find_subprogram_in_catalog(t) or resolve_program_exact(t) or interpret_program_from_text(t):
             return True
 
     return False
@@ -385,6 +438,7 @@ def chat(req: ChatRequest, request: Request):
     raw_text = req.message.strip()[:1000]
     session = get_session(req.session_id)
     append_message(req.session_id, "user", raw_text)
+    session.setdefault("history", []).append({"role": "user", "content": raw_text})
 
     is_very_first_message = (
         not session.get("lead_captured", False)
@@ -641,12 +695,92 @@ def chat(req: ChatRequest, request: Request):
             append_message(req.session_id, "assistant", reply)
             return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=4, step_label="Matches")
 
-        reply = general_followup(session.get("history", []), session.get("shown_courses", []))
+        # Check if student is asking to switch to another program or track
+        # A. Direct program match (e.g. "Fullstack Web", "Web Development", "Cyber Security", "Digital Marketing")
+        switch_prog = resolve_program_exact(raw_text) or interpret_program_from_text(raw_text)
+        current_prog = session.get("selected_program", "")
+        if switch_prog and switch_prog.lower() != current_prog.lower():
+            session["selected_program"] = switch_prog
+            subs = get_subprograms(switch_prog)
+            if subs:
+                session["browse_stage"] = "subprogram"
+                save_session(req.session_id, session)
+                base_reply = f"Bilkul! Chaliye {switch_prog} explore karte hain. Isme ye popular tracks hain — kaunsa aapko interest karta hai?"
+                reply = localize_reply(base_reply, raw_text)
+                append_message(req.session_id, "assistant", reply)
+                return ChatResponse(reply=reply, quick_replies=subs + ["Something else"], step=3, step_label="Mode")
+            else:
+                courses = get_courses_by_program(switch_prog)
+                session["shown_courses"] = courses
+                session["browse_stage"] = "course"
+                save_session(req.session_id, session)
+                base_reply = f"Bilkul! Yeh rahe hamare {switch_prog} courses — ek pe tap karke details dekhein!"
+                reply = localize_reply(base_reply, raw_text)
+                append_message(req.session_id, "assistant", reply)
+                quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+                return ChatResponse(
+                    reply=reply,
+                    suggested_courses=courses,
+                    quick_replies=quick_replies,
+                    step=4,
+                    step_label="Matches",
+                )
+
+        # B. Direct track/subprogram match (e.g. "MERN", "Ethical Hacking", "Data Analytics")
+        cat_match = find_subprogram_in_catalog(raw_text)
+        if cat_match:
+            cat_prog, cat_sub = cat_match
+            if cat_sub.lower() != session.get("selected_subprogram", "").lower():
+                session["selected_program"] = cat_prog
+                session["selected_subprogram"] = cat_sub
+                courses = get_courses_by_subprogram(cat_prog, cat_sub)
+                session["shown_courses"] = courses
+                session["browse_stage"] = "course"
+                save_session(req.session_id, session)
+                base_reply = f"Zaroor! Yeh rahe hamare {cat_sub} ({cat_prog}) courses — ek pe tap karke syllabus check karein!"
+                reply = localize_reply(base_reply, raw_text)
+                append_message(req.session_id, "assistant", reply)
+                quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+                return ChatResponse(
+                    reply=reply,
+                    suggested_courses=courses,
+                    quick_replies=quick_replies,
+                    step=4,
+                    step_label="Matches",
+                )
+
+        # C. Consultative discussion / dislike / questions
+        is_alt = expresses_alternative_or_dislike(raw_text)
+        reply = general_followup(
+            history=session.get("history", []),
+            shown_courses=session.get("shown_courses", []),
+            user_message=raw_text,
+            selected_program=session.get("selected_program", ""),
+            selected_subprogram=session.get("selected_subprogram", ""),
+        )
         append_message(req.session_id, "assistant", reply)
         save_session(req.session_id, session)
-        return ChatResponse(reply=reply, quick_replies=titles + ["Still deciding"], step=4, step_label="Matches")
 
-    reply = general_followup(session.get("history", []), session.get("shown_courses", []))
+        if is_alt:
+            quick_replies = [
+                "Fullstack Web (MERN)",
+                "Data Analytics",
+                "Cyber Security",
+                "Digital Marketing",
+                "Still deciding",
+            ]
+        else:
+            quick_replies = titles + ["Still deciding"]
+
+        return ChatResponse(reply=reply, quick_replies=quick_replies, step=4, step_label="Matches")
+
+    reply = general_followup(
+        history=session.get("history", []),
+        shown_courses=session.get("shown_courses", []),
+        user_message=raw_text,
+        selected_program=session.get("selected_program", ""),
+        selected_subprogram=session.get("selected_subprogram", ""),
+    )
     append_message(req.session_id, "assistant", reply)
     save_session(req.session_id, session)
     return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=4, step_label="Matches")

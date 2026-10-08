@@ -234,6 +234,48 @@ def get_pending_prompt(session: Dict[str, Any]) -> Tuple[str, List[str], int, st
     return "Anything else you'd like to know?", [], 4, "Matches"
 
 
+def is_answering_current_flow(session: Dict[str, Any], text: str) -> bool:
+    """Returns True if user text directly fulfills the pending step and shouldn't be hijacked as an interruption."""
+    t = text.strip()
+    if not t or is_general_question(t):
+        return False
+
+    # Lead capture check (early timing)
+    if LEAD_CAPTURE_TIMING == "early" and not session.get("lead_captured", False):
+        stage = session.get("lead_stage", "first_name")
+        if stage == "whatsapp" and is_valid_phone(t):
+            return True
+        if stage == "email" and is_valid_email(clean_email(t)):
+            return True
+        if stage == "first_name":
+            cleaned = clean_name(t)
+            if len(cleaned) >= 2 and cleaned.replace(" ", "").isalpha() and len(cleaned.split()) <= 4:
+                return True
+        return False
+
+    # Browse stages check
+    b_stage = session.get("browse_stage", "education")
+    if b_stage == "education":
+        return len(t) >= 2 and len(t.split()) <= 4 and not is_general_question(t)
+    if b_stage == "program":
+        if t.lower() in ["something else", "other"]:
+            return True
+        return bool(resolve_program_exact(t) or interpret_program_from_text(t))
+    if b_stage == "subprogram":
+        prog = session.get("selected_program", "")
+        subs = get_subprograms(prog)
+        if t.lower() in ["something else", "all", "all courses", "show all"]:
+            return True
+        return bool(resolve_subprogram(subs, t))
+    if b_stage in ["course", "post_selection"]:
+        shown = session.get("shown_courses", [])
+        titles = [c.get("title", "").strip().lower() for c in shown]
+        if t.lower() == "still deciding" or t.lower() in titles:
+            return True
+
+    return False
+
+
 def handle_lead_capture(req: ChatRequest, session: Dict[str, Any]) -> ChatResponse:
     NON_NAME_WORDS = {
         "hi", "hii", "hiii", "hello", "hey", "heya", "yo", "hola", "hell",
@@ -397,20 +439,21 @@ def chat(req: ChatRequest, request: Request):
         save_session(req.session_id, session)
         return ChatResponse(reply=combined, quick_replies=q_replies, step=step_num, step_label=step_lbl)
 
-    # 3. Interruption Handling
-    if intent in ["course_question", "general_tech_question"] or is_general_question(raw_text):
-        pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
-        if intent == "general_tech_question":
-            ans = answer_general_question(raw_text, session.get("history", []))
-            loc_p = localize_reply(pending_p, raw_text)
-            reply = f"{ans}\n\n{loc_p}"
-        else:
-            shown = session.get("shown_courses", [])
-            reply = answer_grounded_interruption(raw_text, shown, pending_p)
+    # 3. Interruption Handling (only if not directly answering the pending flow step)
+    if not is_answering_current_flow(session, raw_text):
+        if intent in ["course_question", "general_tech_question"] or is_general_question(raw_text):
+            pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
+            if intent == "general_tech_question":
+                ans = answer_general_question(raw_text, session.get("history", []))
+                loc_p = localize_reply(pending_p, raw_text)
+                reply = f"{ans}\n\n{loc_p}"
+            else:
+                shown = session.get("shown_courses", [])
+                reply = answer_grounded_interruption(raw_text, shown, pending_p)
 
-        append_message(req.session_id, "assistant", reply)
-        save_session(req.session_id, session)
-        return ChatResponse(reply=reply, quick_replies=q_replies, step=step_num, step_label=step_lbl)
+            append_message(req.session_id, "assistant", reply)
+            save_session(req.session_id, session)
+            return ChatResponse(reply=reply, quick_replies=q_replies, step=step_num, step_label=step_lbl)
 
     # 4. Lead Capture Phase (Early timing)
     if LEAD_CAPTURE_TIMING == "early" and not session.get("lead_captured", False):
@@ -497,6 +540,38 @@ def chat(req: ChatRequest, request: Request):
     if stage == "subprogram":
         program = session.get("selected_program", "")
         subs = get_subprograms(program)
+
+        if raw_text.strip().lower() in ["something else", "all", "all courses", "show all"]:
+            courses = get_courses_by_program(program)
+            session["shown_courses"] = courses
+            session["browse_stage"] = "course"
+
+            lead = session.get("lead_data", {})
+            row_id = save_course_interest(
+                session_id=req.session_id,
+                first_name=lead.get("first_name", "Student"),
+                whatsapp_number=lead.get("whatsapp_number", ""),
+                email=lead.get("email", ""),
+                recommended_courses=", ".join(c.get("title", "") for c in courses),
+            )
+            session["course_interest_id"] = row_id
+            save_session(req.session_id, session)
+
+            send_recommendation_notification(
+                first_name=lead.get("first_name", "Student"),
+                whatsapp_number=lead.get("whatsapp_number", ""),
+                email=lead.get("email", ""),
+                recommended_courses=", ".join(c.get("title", "") for c in courses),
+            )
+
+            base_reply = f"Here are all our {program} courses — tap one to see details!"
+            reply = localize_reply(base_reply, raw_text)
+            append_message(req.session_id, "assistant", reply)
+            quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+            return ChatResponse(
+                reply=reply, suggested_courses=courses, quick_replies=quick_replies, step=4, step_label="Matches"
+            )
+
         subprogram = resolve_subprogram(subs, raw_text)
         if not subprogram:
             base_reply = "Please pick one of the tracks shown, or tell me which interests you."

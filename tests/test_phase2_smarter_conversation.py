@@ -115,3 +115,24 @@ def test_interruption_preserves_pending_state(client):
     sess = get_session(sess_id)
     assert sess["lead_stage"] == "first_name"
     assert sess["lead_captured"] is False
+
+
+def test_subprogram_selection_advances_to_courses_without_interruption_loop(client):
+    """Verify selecting a 5-word subprogram (e.g. Artificial Intelligence with Gen AI) moves to step 4 without looping."""
+    sess_id = "test_subprog_no_loop_1"
+    # Seed session at subprogram stage
+    sess = get_session(sess_id)
+    sess["lead_captured"] = True
+    sess["browse_stage"] = "subprogram"
+    sess["selected_program"] = "AI-ML"
+    save_session(sess_id, sess)
+
+    resp = client.post("/chat", json={"session_id": sess_id, "message": "Artificial Intelligence with Gen AI"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["step"] == 4
+    assert data["step_label"] == "Matches"
+    assert len(data.get("suggested_courses", [])) >= 1
+    # Check that it did NOT repeat the subprogram question
+    assert "Which AI-ML track interests you" not in data["reply"]
+

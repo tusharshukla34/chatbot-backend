@@ -66,9 +66,26 @@ def classify_intent(text: str) -> str:
     if is_greeting(t):
         return "greeting"
 
-    # For short, typical inputs, fallback to rule classification if not an explicit question
-    if not is_general_question(t) and len(t.split()) <= 4:
-        return "flow_answer"
+    # For non-question inputs, verify if it matches catalog options or is a typical flow response
+    if not is_general_question(t):
+        from app.matching import get_programs
+        from app.course_store import course_store
+
+        t_clean = t.lower()
+        if t_clean in [p.lower() for p in get_programs()]:
+            return "flow_answer"
+
+        all_courses_data = course_store.all_courses()
+        all_subs = {(r.get("subprogram") or "").strip().lower() for r in all_courses_data if r.get("subprogram")}
+        if t_clean in all_subs:
+            return "flow_answer"
+
+        all_titles = {(r.get("course_title") or "").strip().lower() for r in all_courses_data if r.get("course_title")}
+        if t_clean in all_titles:
+            return "flow_answer"
+
+        if len(t.split()) <= 8:
+            return "flow_answer"
 
     # Use LLM classification
     messages = [

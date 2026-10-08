@@ -16,8 +16,8 @@ STRICT SECURITY & ACCURACY RULES:
 
 INTENT_CLASSIFICATION_PROMPT = """Analyze the student's message and categorize it into EXACTLY ONE intent:
 - greeting: Simple greeting (hi, hello, namaste, hey, kaise ho).
-- flow_answer: Answering the pending question (providing name, phone, email, education level, or picking a course/program).
-- course_question: Asking about course syllabus, duration, mode, fees, eligibility, or placement.
+- flow_answer: Answering the pending question (providing name, phone, email, education level, or selecting/naming a course, track, or program such as "Artificial Intelligence with Gen AI", "Full Stack", "Data Science").
+- course_question: Explicitly asking a question about course syllabus, duration, mode, fees, eligibility, or placement (e.g. "what is the syllabus", "fees kitni hai", "placement kaisa hai"). Do NOT use this if the student is simply choosing or naming a course/track without asking a question.
 - general_tech_question: Conceptual or programming query (e.g., "what is react", "write python loop", "difference between ai and ml").
 - handoff_request: Asking to speak to a human counselor, advisor, call, or visit the center.
 - complaint_frustration: Expressing annoyance, bot failure, or dissatisfaction.

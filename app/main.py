@@ -1,22 +1,110 @@
+import csv
+import io
+import logging
 import secrets
-from fastapi import FastAPI, Depends, HTTPException, status
+from collections import defaultdict
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Tuple
+
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from app.schemas import ChatRequest, ChatResponse, MarkInterestRequest
-from app.session_store import get_session, append_message
-from app.validators import is_valid_email, is_valid_phone, clean_phone
-from app.db import save_lead, save_course_interest, update_selected_course, get_connection
-from app.whatsapp_notify import send_lead_notification, send_recommendation_notification, send_selection_notification
-from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, ALLOWED_ORIGINS
-from app.matching import get_programs, get_subprograms, get_courses_by_program, get_courses_by_subprogram
-from app.browse_resolver import resolve_program_exact, resolve_subprogram, REAL_PROGRAMS, is_general_question, is_greeting
+
+from app.config import (
+    ADMIN_PASSWORD,
+    ADMIN_USERNAME,
+    ALLOWED_ORIGINS,
+    LEAD_CAPTURE_TIMING,
+    TEST_MODE,
+)
+from app.db import (
+    get_all_callbacks,
+    get_all_course_interests,
+    get_all_leads,
+    get_offline_queue_count,
+    init_db,
+    is_db_healthy,
+    save_callback_request,
+    save_course_interest,
+    save_lead,
+    update_selected_course,
+)
+from app.logging_config import setup_structured_logging
+from app.matching import (
+    get_courses_by_program,
+    get_courses_by_subprogram,
+    get_programs,
+    get_subprograms,
+)
+from app.browse_resolver import (
+    REAL_PROGRAMS,
+    is_abusive,
+    is_complaint,
+    is_general_question,
+    is_greeting,
+    is_handoff_request,
+    resolve_program_exact,
+    resolve_subprogram,
+)
 from app.llm_client import (
-    interpret_program_from_text, general_followup, answer_general_question,
-    mirror_language, greeting_reply, course_interest_reply, detect_course_interest,
-    name_request_reply, localize_reply, is_actually_a_name,
+    abusive_or_offtopic_reply,
+    answer_general_question,
+    answer_grounded_interruption,
+    classify_intent,
+    course_interest_reply,
+    detect_course_interest,
+    general_followup,
+    greeting_reply,
+    handoff_reply,
+    interpret_program_from_text,
+    is_actually_a_name,
+    localize_reply,
+    mirror_language,
+    name_request_reply,
+)
+from app.schemas import (
+    CallbackRequestSchema,
+    ChatRequest,
+    ChatResponse,
+    HealthResponse,
+    MarkInterestRequest,
+)
+from app.security import (
+    check_rate_limit,
+    constant_time_auth,
+    mask_email,
+    mask_phone,
+)
+from app.session_store import (
+    append_message,
+    get_session,
+    get_session_store_status,
+    save_session,
+)
+from app.validators import clean_email, clean_name, clean_phone, is_valid_email, is_valid_phone
+from app.whatsapp_notify import (
+    send_handoff_notification,
+    send_lead_notification,
+    send_recommendation_notification,
+    send_selection_notification,
 )
 
-app = FastAPI(title="Course Advisor Chatbot")
+logger = logging.getLogger("course_chatbot.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_structured_logging()
+    logger.info("Initializing Course Advisor Chatbot service...")
+    try:
+        init_db()
+    except Exception as e:
+        logger.warning(f"Startup database initialization error: {e}")
+    yield
+    logger.info("Course Advisor Chatbot service shutting down...")
+
+
+app = FastAPI(title="Course Advisor Chatbot", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,10 +115,9 @@ app.add_middleware(
 
 security = HTTPBasic()
 
+
 def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (correct_username and correct_password):
+    if not constant_time_auth(credentials.username, credentials.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -40,48 +127,114 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
 
 
 @app.get("/admin/leads")
-def admin_leads(username: str = Depends(verify_admin)):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM leads ORDER BY id DESC")
-    leads = cur.fetchall()
-    cur.execute("SELECT * FROM course_interest ORDER BY id DESC")
-    interests = cur.fetchall()
-    cur.close()
-    conn.close()
+def admin_leads(page: int = 1, limit: int = 50, username: str = Depends(verify_admin)):
+    all_l = get_all_leads()
+    all_i = get_all_course_interests()
+    all_c = get_all_callbacks()
+
+    start_idx = max(0, (page - 1) * limit)
+    end_idx = start_idx + limit
+
     return {
-        "leads": [dict(row) for row in leads],
-        "course_interest": [dict(row) for row in interests],
+        "page": page,
+        "limit": limit,
+        "total_leads": len(all_l),
+        "leads": all_l[start_idx:end_idx],
+        "course_interest": all_i[start_idx:end_idx],
+        "callbacks": all_c[start_idx:end_idx],
     }
 
 
-def get_pending_prompt(session: dict) -> tuple:
-    """Returns (question_text, quick_replies) for whatever the bot is currently waiting on."""
-    if not session["lead_captured"]:
-        stage = session["lead_stage"]
+@app.get("/admin/leads/export")
+def export_leads_csv(username: str = Depends(verify_admin)):
+    all_l = get_all_leads()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Session ID", "First Name", "WhatsApp Number", "Email", "Consent", "Created At"])
+    for row in all_l:
+        writer.writerow([
+            row.get("id", ""),
+            row.get("session_id", ""),
+            row.get("first_name", ""),
+            row.get("whatsapp_number", ""),
+            row.get("email", ""),
+            row.get("consent", True),
+            row.get("created_at", ""),
+        ])
+    output.seek(0)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cybrom_leads.csv"},
+    )
+
+
+@app.get("/admin/stats")
+def admin_stats(username: str = Depends(verify_admin)):
+    all_l = get_all_leads()
+    all_i = get_all_course_interests()
+    all_c = get_all_callbacks()
+
+    daily_leads = defaultdict(int)
+    for l in all_l:
+        created = l.get("created_at", "")
+        day = created[:10] if len(created) >= 10 else "Unknown"
+        daily_leads[day] += 1
+
+    selected_counts = defaultdict(int)
+    for i in all_i:
+        c_sel = i.get("selected_course")
+        if c_sel:
+            selected_counts[c_sel] += 1
+
+    return {
+        "total_leads": len(all_l),
+        "total_course_interests": len(all_i),
+        "total_callbacks_requested": len(all_c),
+        "daily_leads": dict(daily_leads),
+        "top_selected_courses": sorted(selected_counts.items(), key=lambda x: x[1], reverse=True)[:10],
+    }
+
+
+@app.get("/health", response_model=HealthResponse)
+def health():
+    db_ok = is_db_healthy()
+    store_status = get_session_store_status()
+    queue_pending = get_offline_queue_count()
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "database": "connected" if db_ok else "disconnected",
+        "session_store": store_status,
+        "offline_queue_pending": queue_pending,
+    }
+
+
+def get_pending_prompt(session: Dict[str, Any]) -> Tuple[str, List[str], int, str]:
+    if LEAD_CAPTURE_TIMING == "early" and not session.get("lead_captured", False):
+        stage = session.get("lead_stage", "first_name")
         if stage == "first_name":
-            return "By the way, could you share your name?", []
+            return "By the way, could you share your name?", [], 1, "Level"
         if stage == "whatsapp":
-            return "And what's your WhatsApp number?", []
+            return "And what's your WhatsApp number?", [], 1, "Level"
         if stage == "email":
-            return "And your email address?", []
+            return "And your email address?", [], 1, "Level"
 
-    stage = session["browse_stage"]
-    if stage == "education":
-        return "What's your current education level?", ["10th pass", "12th pass", "Graduate", "Something else"]
-    if stage == "program":
-        return "Which area are you interested in?", REAL_PROGRAMS + ["Something else"]
-    if stage == "subprogram":
-        subs = get_subprograms(session["selected_program"])
-        return f"Which {session['selected_program']} track interests you?", subs + ["Something else"]
-    if stage == "course":
-        titles = [c["title"] for c in session["shown_courses"]]
-        return "Which course would you like to know more about?", titles + ["Still deciding"]
-    return "Anything else you'd like to know?", []
+    b_stage = session.get("browse_stage", "education")
+    if b_stage == "education":
+        return "What's your current education level?", ["10th pass", "12th pass", "Graduate", "Something else"], 1, "Level"
+    if b_stage == "program":
+        return "Which area are you interested in?", REAL_PROGRAMS + ["Something else"], 2, "Interest"
+    if b_stage == "subprogram":
+        subs = get_subprograms(session.get("selected_program", ""))
+        return f"Which {session.get('selected_program', '')} track interests you?", subs + ["Something else"], 3, "Mode"
+    if b_stage in ["course", "post_selection"]:
+        titles = [c.get("title", "") for c in session.get("shown_courses", [])]
+        return "Which course would you like to know more about?", titles + ["Still deciding"], 4, "Matches"
+
+    return "Anything else you'd like to know?", [], 4, "Matches"
 
 
-def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
-
+def handle_lead_capture(req: ChatRequest, session: Dict[str, Any]) -> ChatResponse:
     NON_NAME_WORDS = {
         "hi", "hii", "hiii", "hello", "hey", "heya", "yo", "hola", "hell",
         "ok", "okay", "sure", "yes", "no", "test", "namaste",
@@ -92,7 +245,7 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
     stage = session["lead_stage"]
 
     if stage == "first_name":
-        cleaned = text.strip()
+        cleaned = clean_name(text)
         fast_invalid = (
             len(cleaned) < 2
             or cleaned.lower() in NON_NAME_WORDS
@@ -101,56 +254,65 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
         is_invalid = fast_invalid or (not fast_invalid and not is_actually_a_name(cleaned))
 
         if is_invalid:
-            session["name_attempts"] += 1
+            session["name_attempts"] = session.get("name_attempts", 0) + 1
             if session["name_attempts"] >= 3:
                 session["lead_data"]["first_name"] = "Student"
                 session["lead_stage"] = "whatsapp"
+                save_session(req.session_id, session)
                 base_reply = "No problem, let's continue! What's your WhatsApp number? (with country code if outside India)"
                 reply = localize_reply(base_reply, text)
                 append_message(req.session_id, "assistant", reply)
-                return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+                return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
 
+            save_session(req.session_id, session)
             reply = name_request_reply(text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
 
         session["lead_data"]["first_name"] = cleaned
         session["lead_stage"] = "whatsapp"
+        save_session(req.session_id, session)
         base_reply = f"Nice to meet you, {cleaned}! What's your WhatsApp number? (with country code if outside India)"
         reply = mirror_language(base_reply, text)
         append_message(req.session_id, "assistant", reply)
-        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
 
     if stage == "whatsapp":
         if not is_valid_phone(text):
             base_reply = "That doesn't look like a valid number — could you enter a 10-digit WhatsApp number?"
             reply = mirror_language(base_reply, text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
+
         session["lead_data"]["whatsapp_number"] = clean_phone(text)
         session["lead_stage"] = "email"
+        save_session(req.session_id, session)
         base_reply = "Great, thank you! And what's your email address?"
         reply = mirror_language(base_reply, text)
         append_message(req.session_id, "assistant", reply)
-        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
 
     if stage == "email":
-        if not is_valid_email(text):
+        cleaned_mail = clean_email(text)
+        if not is_valid_email(cleaned_mail):
             base_reply = "That doesn't look like a valid email — could you double check and re-enter it?"
             reply = mirror_language(base_reply, text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
-        session["lead_data"]["email"] = text.strip()
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
+
+        session["lead_data"]["email"] = cleaned_mail
         session["lead_stage"] = "done"
         session["lead_captured"] = True
 
-        from app.config import TEST_MODE
-        first_name_to_save = f"[TEST] {session['lead_data']['first_name']}" if TEST_MODE else session["lead_data"]["first_name"]
+        first_name_to_save = (
+            f"[TEST] {session['lead_data']['first_name']}" if TEST_MODE else session["lead_data"]["first_name"]
+        )
         save_lead(
             session_id=req.session_id,
             first_name=first_name_to_save,
             whatsapp_number=session["lead_data"]["whatsapp_number"],
             email=session["lead_data"]["email"],
+            consent=True,
         )
 
         send_lead_notification(
@@ -159,189 +321,275 @@ def handle_lead_capture(req: ChatRequest, session: dict) -> ChatResponse:
             email=session["lead_data"]["email"],
         )
 
+        logger.info(
+            f"Lead successfully saved: session={req.session_id}, phone={mask_phone(session['lead_data']['whatsapp_number'])}, email={mask_email(session['lead_data']['email'])}"
+        )
+
+        save_session(req.session_id, session)
         name = session["lead_data"]["first_name"]
         base_reply = f"Perfect, all set {name}! What's your current education level?"
         reply = mirror_language(base_reply, text)
         append_message(req.session_id, "assistant", reply)
         quick_replies = ["10th pass", "12th pass", "Graduate", "Something else"]
-        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies)
+        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies, step=1, step_label="Level")
+
+    return ChatResponse(reply="Let's continue!", step=1, step_label="Level")
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
-    append_message(req.session_id, "user", req.message)
+def chat(req: ChatRequest, request: Request):
+    check_rate_limit(request, req.session_id)
+
+    raw_text = req.message.strip()[:1000]
     session = get_session(req.session_id)
-    text = req.message.strip()
+    append_message(req.session_id, "user", raw_text)
 
     is_very_first_message = (
-        not session["lead_captured"]
-        and session["lead_stage"] == "first_name"
-        and not session["lead_data"]["first_name"]
+        not session.get("lead_captured", False)
+        and session.get("lead_stage") == "first_name"
+        and not session["lead_data"].get("first_name")
+        and len(session.get("history", [])) <= 1
     )
+
     if is_very_first_message:
-        if is_greeting(text):
+        if is_greeting(raw_text):
             reply = greeting_reply()
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
-        if detect_course_interest(text):
+            save_session(req.session_id, session)
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
+        if detect_course_interest(raw_text):
             reply = course_interest_reply()
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+            save_session(req.session_id, session)
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
 
-    if is_general_question(text):
-        answer = answer_general_question(text, session["history"])
-        pending_question, quick_replies = get_pending_prompt(session)
-        localized_question = localize_reply(pending_question, text)
-        reply = f"{answer}\n\n{localized_question}"
+    intent = classify_intent(raw_text)
+
+    # 1. Abusive or Off-topic
+    if intent in ["abusive", "off_topic"]:
+        base_warn = abusive_or_offtopic_reply()
+        pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
+        reply = f"{base_warn}\n\n{pending_p}"
         append_message(req.session_id, "assistant", reply)
-        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=quick_replies)
+        save_session(req.session_id, session)
+        return ChatResponse(reply=reply, quick_replies=q_replies, step=step_num, step_label=step_lbl)
 
-    if not session["lead_captured"]:
+    # 2. Human Handoff / Complaint
+    if intent in ["handoff_request", "complaint_frustration"]:
+        lead = session.get("lead_data", {})
+        save_callback_request(
+            session_id=req.session_id,
+            first_name=lead.get("first_name", ""),
+            whatsapp_number=lead.get("whatsapp_number", ""),
+            email=lead.get("email", ""),
+            reason=raw_text,
+        )
+        send_handoff_notification(
+            first_name=lead.get("first_name", ""),
+            whatsapp_number=lead.get("whatsapp_number", ""),
+            email=lead.get("email", ""),
+            reason=raw_text,
+        )
+        reply = handoff_reply()
+        pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
+        combined = f"{reply}\n\n{pending_p}"
+        append_message(req.session_id, "assistant", combined)
+        save_session(req.session_id, session)
+        return ChatResponse(reply=combined, quick_replies=q_replies, step=step_num, step_label=step_lbl)
+
+    # 3. Interruption Handling
+    if intent in ["course_question", "general_tech_question"] or is_general_question(raw_text):
+        pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
+        if intent == "general_tech_question":
+            ans = answer_general_question(raw_text, session.get("history", []))
+            loc_p = localize_reply(pending_p, raw_text)
+            reply = f"{ans}\n\n{loc_p}"
+        else:
+            shown = session.get("shown_courses", [])
+            reply = answer_grounded_interruption(raw_text, shown, pending_p)
+
+        append_message(req.session_id, "assistant", reply)
+        save_session(req.session_id, session)
+        return ChatResponse(reply=reply, quick_replies=q_replies, step=step_num, step_label=step_lbl)
+
+    # 4. Lead Capture Phase (Early timing)
+    if LEAD_CAPTURE_TIMING == "early" and not session.get("lead_captured", False):
         return handle_lead_capture(req, session)
 
-    stage = session["browse_stage"]
+    # 5. Course Browse Stages
+    stage = session.get("browse_stage", "education")
 
-    # ---- Step 1: education level ----
+    # Step 1: Education Level
     if stage == "education":
-        if len(text) < 2:
+        if len(raw_text) < 2:
             base_reply = "Could you tell me your education level?"
-            reply = localize_reply(base_reply, text)
+            reply = localize_reply(base_reply, raw_text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[],
-                                 quick_replies=["10th pass", "12th pass", "Graduate", "Something else"])
-        session["profile"]["education_level"] = text
+            save_session(req.session_id, session)
+            return ChatResponse(
+                reply=reply,
+                quick_replies=["10th pass", "12th pass", "Graduate", "Something else"],
+                step=1,
+                step_label="Level",
+            )
+        session["profile"]["education_level"] = raw_text
         session["browse_stage"] = "program"
+        save_session(req.session_id, session)
         base_reply = "Great! Which area are you interested in?"
-        reply = localize_reply(base_reply, text)
+        reply = localize_reply(base_reply, raw_text)
         append_message(req.session_id, "assistant", reply)
-        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=REAL_PROGRAMS + ["Something else"])
+        return ChatResponse(reply=reply, quick_replies=REAL_PROGRAMS + ["Something else"], step=2, step_label="Interest")
 
-    # ---- Step 2: program selection ----
+    # Step 2: Program Selection
     if stage == "program":
-        program = resolve_program_exact(text)
+        program = resolve_program_exact(raw_text)
         if not program:
-            program = interpret_program_from_text(text)
+            program = interpret_program_from_text(raw_text)
         if not program:
             base_reply = "I couldn't quite match that. Could you pick one of these areas?"
-            reply = localize_reply(base_reply, text)
+            reply = localize_reply(base_reply, raw_text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=REAL_PROGRAMS + ["Something else"])
+            save_session(req.session_id, session)
+            return ChatResponse(reply=reply, quick_replies=REAL_PROGRAMS + ["Something else"], step=2, step_label="Interest")
 
         session["selected_program"] = program
         subs = get_subprograms(program)
 
         if subs:
             session["browse_stage"] = "subprogram"
+            save_session(req.session_id, session)
             base_reply = f"{program} has a few tracks — which one interests you?"
-            reply = localize_reply(base_reply, text)
+            reply = localize_reply(base_reply, raw_text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=subs + ["Something else"])
+            return ChatResponse(reply=reply, quick_replies=subs + ["Something else"], step=3, step_label="Mode")
 
         courses = get_courses_by_program(program)
         session["shown_courses"] = courses
         session["browse_stage"] = "course"
 
-        lead = session["lead_data"]
+        lead = session.get("lead_data", {})
         row_id = save_course_interest(
-            session_id=req.session_id, first_name=lead["first_name"],
-            whatsapp_number=lead["whatsapp_number"], email=lead["email"],
-            recommended_courses=", ".join(c["title"] for c in courses),
+            session_id=req.session_id,
+            first_name=lead.get("first_name", "Student"),
+            whatsapp_number=lead.get("whatsapp_number", ""),
+            email=lead.get("email", ""),
+            recommended_courses=", ".join(c.get("title", "") for c in courses),
         )
         session["course_interest_id"] = row_id
+        save_session(req.session_id, session)
+
         send_recommendation_notification(
-            first_name=lead["first_name"], whatsapp_number=lead["whatsapp_number"],
-            email=lead["email"], recommended_courses=", ".join(c["title"] for c in courses),
+            first_name=lead.get("first_name", "Student"),
+            whatsapp_number=lead.get("whatsapp_number", ""),
+            email=lead.get("email", ""),
+            recommended_courses=", ".join(c.get("title", "") for c in courses),
         )
 
         base_reply = f"Here are all our {program} courses — tap one to see details!"
-        reply = localize_reply(base_reply, text)
+        reply = localize_reply(base_reply, raw_text)
         append_message(req.session_id, "assistant", reply)
-        quick_replies = [c["title"] for c in courses] + ["Still deciding"]
-        return ChatResponse(reply=reply, suggested_courses=courses, quick_replies=quick_replies)
+        quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+        return ChatResponse(
+            reply=reply, suggested_courses=courses, quick_replies=quick_replies, step=4, step_label="Matches"
+        )
 
-    # ---- Step 3: subprogram selection ----
+    # Step 3: Subprogram Selection
     if stage == "subprogram":
-        program = session["selected_program"]
+        program = session.get("selected_program", "")
         subs = get_subprograms(program)
-        subprogram = resolve_subprogram(subs, text)
+        subprogram = resolve_subprogram(subs, raw_text)
         if not subprogram:
             base_reply = "Please pick one of the tracks shown, or tell me which interests you."
-            reply = localize_reply(base_reply, text)
+            reply = localize_reply(base_reply, raw_text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=subs + ["Something else"])
+            save_session(req.session_id, session)
+            return ChatResponse(reply=reply, quick_replies=subs + ["Something else"], step=3, step_label="Mode")
 
         session["selected_subprogram"] = subprogram
         courses = get_courses_by_subprogram(program, subprogram)
         session["shown_courses"] = courses
         session["browse_stage"] = "course"
 
-        lead = session["lead_data"]
+        lead = session.get("lead_data", {})
         row_id = save_course_interest(
-            session_id=req.session_id, first_name=lead["first_name"],
-            whatsapp_number=lead["whatsapp_number"], email=lead["email"],
-            recommended_courses=", ".join(c["title"] for c in courses),
+            session_id=req.session_id,
+            first_name=lead.get("first_name", "Student"),
+            whatsapp_number=lead.get("whatsapp_number", ""),
+            email=lead.get("email", ""),
+            recommended_courses=", ".join(c.get("title", "") for c in courses),
         )
         session["course_interest_id"] = row_id
+        save_session(req.session_id, session)
+
         send_recommendation_notification(
-            first_name=lead["first_name"], whatsapp_number=lead["whatsapp_number"],
-            email=lead["email"], recommended_courses=", ".join(c["title"] for c in courses),
+            first_name=lead.get("first_name", "Student"),
+            whatsapp_number=lead.get("whatsapp_number", ""),
+            email=lead.get("email", ""),
+            recommended_courses=", ".join(c.get("title", "") for c in courses),
         )
 
         base_reply = f"Here are our {subprogram} courses — tap one to see details!"
-        reply = localize_reply(base_reply, text)
+        reply = localize_reply(base_reply, raw_text)
         append_message(req.session_id, "assistant", reply)
-        quick_replies = [c["title"] for c in courses] + ["Still deciding"]
-        return ChatResponse(reply=reply, suggested_courses=courses, quick_replies=quick_replies)
+        quick_replies = [c.get("title", "") for c in courses] + ["Still deciding"]
+        return ChatResponse(
+            reply=reply, suggested_courses=courses, quick_replies=quick_replies, step=4, step_label="Matches"
+        )
 
-    # ---- Step 4: exact course selection ----
+    # Step 4: Exact Course Selection & Discussion
     if stage == "course":
-        titles = [c["title"] for c in session["shown_courses"]]
+        titles = [c.get("title", "") for c in session.get("shown_courses", [])]
 
-        if text == "Still deciding":
+        if raw_text == "Still deciding":
             base_reply = "No worries, take your time! Let me know if you have any questions about these courses."
-            reply = localize_reply(base_reply, text)
+            reply = localize_reply(base_reply, raw_text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=titles + ["Still deciding"])
+            save_session(req.session_id, session)
+            return ChatResponse(reply=reply, quick_replies=titles + ["Still deciding"], step=4, step_label="Matches")
 
-        if text in titles:
-            session["selected_course"] = text
+        if raw_text in titles:
+            session["selected_course"] = raw_text
             session["browse_stage"] = "post_selection"
-            lead = session["lead_data"]
-            if session["course_interest_id"]:
-                update_selected_course(session["course_interest_id"], text)
+            lead = session.get("lead_data", {})
+            if session.get("course_interest_id"):
+                update_selected_course(session["course_interest_id"], raw_text, session_id=req.session_id)
+            save_session(req.session_id, session)
+
             send_selection_notification(
-                first_name=lead["first_name"], whatsapp_number=lead["whatsapp_number"],
-                email=lead["email"], selected_course=text,
+                first_name=lead.get("first_name", "Student"),
+                whatsapp_number=lead.get("whatsapp_number", ""),
+                email=lead.get("email", ""),
+                selected_course=raw_text,
             )
-            base_reply = f"Great choice! I've noted your interest in {text}. Our team will reach out with next steps. Anything else you'd like to know?"
-            reply = localize_reply(base_reply, text)
+            base_reply = f"Great choice! I've noted your interest in {raw_text}. Our team will reach out with next steps. Anything else you'd like to know?"
+            reply = localize_reply(base_reply, raw_text)
             append_message(req.session_id, "assistant", reply)
-            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+            return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=4, step_label="Matches")
 
-        reply = general_followup(session["history"], session["shown_courses"])
+        reply = general_followup(session.get("history", []), session.get("shown_courses", []))
         append_message(req.session_id, "assistant", reply)
-        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=titles + ["Still deciding"])
+        save_session(req.session_id, session)
+        return ChatResponse(reply=reply, quick_replies=titles + ["Still deciding"], step=4, step_label="Matches")
 
-    # ---- Step 5: after a final selection ----
-    reply = general_followup(session["history"], session["shown_courses"])
+    reply = general_followup(session.get("history", []), session.get("shown_courses", []))
     append_message(req.session_id, "assistant", reply)
-    return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[])
+    save_session(req.session_id, session)
+    return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=4, step_label="Matches")
 
 
 @app.post("/mark-interest")
-def mark_interest(req: MarkInterestRequest):
+def mark_interest(req: MarkInterestRequest, request: Request):
+    check_rate_limit(request, req.session_id)
     session = get_session(req.session_id)
-    lead = session["lead_data"]
-    if session.get("course_interest_id"):
-        update_selected_course(session["course_interest_id"], req.course_title)
+    lead = session.get("lead_data", {})
+    row_id = session.get("course_interest_id")
+    update_selected_course(row_id, req.course_title, session_id=req.session_id)
     send_selection_notification(
-        first_name=lead.get("first_name", ""), whatsapp_number=lead.get("whatsapp_number", ""),
-        email=lead.get("email", ""), selected_course=req.course_title,
+        first_name=lead.get("first_name", "Student"),
+        whatsapp_number=lead.get("whatsapp_number", ""),
+        email=lead.get("email", ""),
+        selected_course=req.course_title,
     )
     session["selected_course"] = req.course_title
-    return {"status": "ok"}
-
-
-@app.get("/health")
-def health():
+    save_session(req.session_id, session)
     return {"status": "ok"}

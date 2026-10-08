@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .env
 data/chatbot.db
+data/sessions.db
+data/offline_queue.db
+.pytest_cache/
+.coverage
+htmlcov/
+*.log

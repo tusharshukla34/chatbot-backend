@@ -1,103 +1,30 @@
 import json
+import logging
 import re
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 from groq import Groq
 from app.config import GROQ_API_KEY, GROQ_MODEL
+from app.prompts import (
+    ABUSIVE_OR_OFFTOPIC_PROMPT,
+    COURSE_INTEREST_CHECK_PROMPT,
+    COURSE_INTEREST_REPLY_PROMPT,
+    GENERAL_ASSISTANT_PROMPT,
+    GREETING_REPLY_PROMPT,
+    GROUNDED_QA_PROMPT,
+    HANDOFF_REPLY_PROMPT,
+    INTENT_CLASSIFICATION_PROMPT,
+    LOCALIZE_PROMPT,
+    MIRROR_LANGUAGE_PROMPT,
+    NAME_CLASSIFY_PROMPT,
+    NAME_REQUEST_REPLY_PROMPT,
+    SUBPROGRAM_FALLBACK_PROMPT,
+    SYSTEM_GUARDRAIL,
+)
 
-client = Groq(api_key=GROQ_API_KEY)
+logger = logging.getLogger("course_chatbot.llm")
 
-INTERPRET_PROGRAM_PROMPT = """A student typed a free-text answer describing what they're interested in.
-Map it to EXACTLY ONE of these program names if it clearly fits, otherwise respond with NONE:
-Fullstack Web, Cyber Security, Data Programs, AI-ML, Digital Marketing
-
-Respond with ONLY the program name (exact spelling above) or the word NONE. No other text.
-"""
-
-FOLLOWUP_SYSTEM_PROMPT = """You are a friendly course-counseling assistant for an ed-tech institute.
-You are given a list of real courses currently being discussed, with their real details
-(title, duration, mode, module list). Only state facts given below — never invent syllabus
-details, fees, dates, or eligibility not given here. If asked something not covered, say so honestly.
-
-LANGUAGE: Always write in Hinglish using ROMAN script only (English letters), like "Python ek
-high-level language hai" — never use Devanagari Hindi script. If the student wrote in clear formal
-English, you may reply in plain English instead.
-
-Write in plain conversational sentences, no markdown tables or pipe symbols.
-Respond in plain natural language (NOT JSON) — just your reply text.
-"""
-
-GENERAL_ASSISTANT_PROMPT = """You are a friendly, knowledgeable assistant for Cybrom, an ed-tech institute.
-
-LANGUAGE: Reply in warm, natural Hindi-English mixed style (Hinglish) by default, the way a
-friendly Indian ed-tech counselor would speak — mixing Hindi and English words naturally. Always
-use ROMAN script only (English letters) — never Devanagari Hindi script. If the student writes in
-clear, formal English and seems to prefer that, you can respond in plain English instead.
-
-You can freely answer general knowledge questions, explain concepts, and write code examples,
-exactly like a helpful tutor would (e.g. "what is Python", "write a factorial program").
-
-STRICT RULE: Never state specific facts about Cybrom's own courses (fees, duration, eligibility,
-start dates) unless those facts are explicitly given to you in this conversation — that data isn't
-available to you here. If asked about a specific course's price/duration/eligibility, say honestly
-that you don't have that detail yet and suggest they continue with the course browser or contact
-admissions, don't make up a number.
-
-Keep replies concise and warm — 2-4 sentences for explanations, or a short code block if asked for code.
-"""
-
-MIRROR_LANGUAGE_PROMPT = """Rewrite the following message in warm, natural Hindi-English mixed
-style (Hinglish) — the way a friendly Indian ed-tech counselor would casually speak, mixing Hindi
-and English words naturally (like "Aapka naam kya hai?" or "Kaise madad kar sakta hoon aapki?").
-Always use ROMAN script only (English letters) — never Devanagari Hindi script.
-Keep the exact same meaning and information, and keep any names/numbers/emails exactly as given.
-Respond with ONLY the rewritten message in Hinglish, nothing else.
-"""
-
-GREETING_REPLY_PROMPT = """A student just greeted you (said hi/hello). Reply with a short, warm
-greeting in Hinglish using ROMAN script only (English letters, never Devanagari), asking what
-they'd like help with today — courses, career guidance, or anything else. Keep it to 1 sentence.
-Respond with ONLY the greeting message.
-"""
-
-COURSE_INTEREST_REPLY_PROMPT = """The student just said they're interested in courses. Reply
-warmly in Hinglish using ROMAN script only (English letters, never Devanagari), something like
-"Haan, main aapko courses bata sakta hoon, uske pehle aapka naam bata dijiye" — telling them
-you'll help with courses, but first need their name. Keep it to 1 short sentence. Respond with
-ONLY the reply message.
-"""
-
-COURSE_INTEREST_CHECK_PROMPT = """A student sent a message. Decide if they are expressing interest
-in learning about courses, career guidance, or what the institute offers — even if phrased
-differently (e.g. "mujhe course jaanna hai", "guide me", "what do you teach", "career advice chahiye").
-
-Respond with ONLY the word YES or NO, nothing else.
-"""
-
-NAME_REQUEST_REPLY_PROMPT = """The student just replied with something that isn't actually their
-name (e.g. an affirmation like "ha"/"yes"/"ok", a filler word, or something unrelated). Acknowledge
-what they said naturally and warmly in Hinglish using ROMAN script only (English letters, never
-Devanagari) — e.g. if they said "ha", respond like you're confirming you'll help them — then ask
-for their name so you can assist them. Keep it to 1-2 short sentences. Respond with ONLY the reply message.
-"""
-
-LOCALIZE_PROMPT = """Default language: warm, natural Hindi-English mixed style (Hinglish), using
-ROMAN script only (English letters) — never Devanagari Hindi script — like a friendly Indian
-ed-tech counselor speaking casually.
-
-If the student's last message is a clear, proper English sentence (not just a single English word
-or a short greeting), reply in plain English instead. Otherwise, always default to Hinglish (Roman script).
-
-Rewrite the given message accordingly. Keep the EXACT same meaning, and keep any names, course
-titles, numbers, or emails exactly as given — do not translate proper nouns. Respond with ONLY the
-rewritten message, nothing else.
-"""
-
-NAME_CLASSIFY_PROMPT = """A student was asked for their name. Decide if their message is actually
-a person's name (in any language/script), or if it's something else entirely — a question, a
-refusal, a greeting, or unrelated text (e.g. "who are you", "why do you need it", "no thanks").
-
-Respond with ONLY one word: NAME or NOT_NAME.
-"""
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 
 def _parse_json(text: str) -> Dict[str, Any]:
@@ -105,145 +32,240 @@ def _parse_json(text: str) -> Dict[str, Any]:
     return json.loads(cleaned)
 
 
-def is_actually_a_name(text: str) -> bool:
+def _safe_chat_call(messages: List[Dict[str, str]], temperature: float = 0.3) -> str:
+    """Helper to call Groq chat completion with timeout and exception safety."""
+    if not client:
+        logger.warning("Groq client is not initialized (GROQ_API_KEY missing).")
+        return ""
     try:
         response = client.chat.completions.create(
             model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": NAME_CLASSIFY_PROMPT},
-                {"role": "user", "content": text},
-            ],
-        )
-        result = response.choices[0].message.content.strip().upper()
-        return result.startswith("NAME")
-    except Exception as e:
-        print(f"[Groq] is_actually_a_name failed: {e}")
-        return True
-
-
-def localize_reply(message: str, student_text: str) -> str:
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": LOCALIZE_PROMPT},
-                {"role": "user", "content": f"Student's last message: {student_text}\n\nMessage to rewrite: {message}"},
-            ],
+            messages=messages,
+            temperature=temperature,
+            timeout=8.0,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[Groq] localize_reply failed: {e}")
-        return message
-
-
-def name_request_reply(student_text: str) -> str:
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": NAME_REQUEST_REPLY_PROMPT},
-                {"role": "user", "content": student_text},
-            ],
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"[Groq] name_request_reply failed: {e}")
-        return "Theek hai, main aapki madad karunga — pehle apna naam bata dijiye?"
-
-
-def detect_course_interest(text: str) -> bool:
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": COURSE_INTEREST_CHECK_PROMPT},
-                {"role": "user", "content": text},
-            ],
-        )
-        result = response.choices[0].message.content.strip().upper()
-        return result.startswith("YES")
-    except Exception as e:
-        print(f"[Groq] detect_course_interest failed: {e}")
-        return False
-
-
-def course_interest_reply() -> str:
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "system", "content": COURSE_INTEREST_REPLY_PROMPT}, {"role": "user", "content": "courses"}],
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"[Groq] course_interest_reply failed: {e}")
-        return "Haan, main aapko courses bata sakta hoon — uske pehle aapka naam bata dijiye?"
-
-
-def greeting_reply() -> str:
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "system", "content": GREETING_REPLY_PROMPT}, {"role": "user", "content": "hi"}],
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"[Groq] greeting_reply failed: {e}")
-        return "Hello! Kaise madad kar sakta hoon aapki?"
-
-
-def mirror_language(message: str, student_text: str) -> str:
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": MIRROR_LANGUAGE_PROMPT},
-                {"role": "user", "content": f"Student wrote: {student_text}\n\nMessage to rewrite: {message}"},
-            ],
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"[Groq] mirror_language failed: {e}")
-        return message
-
-
-def answer_general_question(user_message: str, history: List[Dict[str, str]]) -> str:
-    messages = [{"role": "system", "content": GENERAL_ASSISTANT_PROMPT}] + history[-6:]
-    try:
-        response = client.chat.completions.create(model=GROQ_MODEL, messages=messages)
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"[Groq] answer_general_question failed: {e}")
-        return "Sorry, I had a small hiccup there — could you ask that again?"
-
-
-def interpret_program_from_text(text: str) -> str:
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": INTERPRET_PROGRAM_PROMPT},
-                {"role": "user", "content": text},
-            ],
-        )
-        result = response.choices[0].message.content.strip()
-        valid = {"Fullstack Web", "Cyber Security", "Data Programs", "AI-ML", "Digital Marketing"}
-        return result if result in valid else ""
-    except Exception as e:
-        print(f"[Groq] interpret_program_from_text failed: {e}")
+        logger.error(f"Groq API call error: {e}")
         return ""
 
 
-def general_followup(history: List[Dict[str, str]], shown_courses: List[Dict[str, Any]]) -> str:
-    catalog = "\n".join(
-        f"- {c['title']} | duration: {c['duration']} | mode: {c['mode']} "
-        f"| modules: {', '.join(c.get('modules_preview', []))}"
-        for c in shown_courses
+def classify_intent(text: str) -> str:
+    """Classifies user intent using fast rules and LLM fallback."""
+    from app.browse_resolver import (
+        is_greeting, is_handoff_request, is_complaint, is_abusive, is_general_question
     )
-    context_msg = {"role": "user", "content": f"COURSES CURRENTLY SHOWN:\n{catalog}"}
-    messages = [{"role": "system", "content": FOLLOWUP_SYSTEM_PROMPT}] + history + [context_msg]
+
+    t = text.strip()
+    if is_abusive(t):
+        return "abusive"
+    if is_handoff_request(t):
+        return "handoff_request"
+    if is_complaint(t):
+        return "complaint_frustration"
+    if is_greeting(t):
+        return "greeting"
+
+    # For short, typical inputs, fallback to rule classification if not an explicit question
+    if not is_general_question(t) and len(t.split()) <= 4:
+        return "flow_answer"
+
+    # Use LLM classification
+    messages = [
+        {"role": "system", "content": INTENT_CLASSIFICATION_PROMPT},
+        {"role": "user", "content": t[:500]},
+    ]
+    raw = _safe_chat_call(messages, temperature=0.0)
     try:
-        response = client.chat.completions.create(model=GROQ_MODEL, messages=messages)
-        return response.choices[0].message.content
+        data = _parse_json(raw)
+        intent = data.get("intent", "flow_answer")
+        valid_intents = {
+            "greeting", "flow_answer", "course_question", "general_tech_question",
+            "handoff_request", "complaint_frustration", "abusive", "off_topic"
+        }
+        return intent if intent in valid_intents else "flow_answer"
+    except Exception:
+        return "general_tech_question" if is_general_question(t) else "flow_answer"
+
+
+def fallback_resolve_subprogram_llm(available_subs: List[str], text: str) -> Optional[str]:
+    """Queries Groq with constrained JSON schema to match subprogram when rules fail."""
+    prompt = SUBPROGRAM_FALLBACK_PROMPT.format(
+        allowed_subprograms="\n".join(f"- {s}" for s in available_subs),
+        student_input=text[:200],
+    )
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": text[:200]},
+    ]
+    raw = _safe_chat_call(messages, temperature=0.0)
+    try:
+        data = _parse_json(raw)
+        matched = data.get("subprogram", "").strip()
+        for s in available_subs:
+            if matched.lower() == s.lower():
+                return s
     except Exception as e:
-        print(f"[Groq] general_followup failed: {e}")
-        return "Sorry, I had a small hiccup — could you ask that again?"
+        logger.warning(f"Could not parse LLM subprogram response '{raw}': {e}")
+    return None
+
+
+def answer_grounded_interruption(
+    user_question: str,
+    catalog_courses: List[Dict[str, Any]],
+    pending_prompt: str,
+) -> str:
+    """Answers a mid-conversation question grounded in real catalog facts and returns to pending step."""
+    courses_info = "\n".join(
+        f"- {c.get('title', c.get('course_title', ''))}: Duration={c.get('duration', 'Contact us')}, "
+        f"Mode={c.get('mode', 'Contact us')}, Modules={', '.join(c.get('modules_preview', []))}"
+        for c in catalog_courses[:10]
+    )
+    if not courses_info:
+        courses_info = "Specific course details will be shown in the next step."
+
+    prompt = GROUNDED_QA_PROMPT.format(
+        courses_context=courses_info,
+        pending_step_prompt=pending_prompt,
+    )
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_question[:500]},
+    ]
+    answer = _safe_chat_call(messages, temperature=0.3)
+    if answer:
+        return answer
+    return f"Main aapko zaroor guide karunga. {pending_prompt}"
+
+
+def is_actually_a_name(text: str) -> bool:
+    """Validates whether student input is an actual human name."""
+    messages = [
+        {"role": "system", "content": NAME_CLASSIFY_PROMPT},
+        {"role": "user", "content": text[:100]},
+    ]
+    raw = _safe_chat_call(messages, temperature=0.0)
+    try:
+        data = _parse_json(raw)
+        return bool(data.get("is_name", True))
+    except Exception:
+        # Fallback to true if alphabetic
+        return text.replace(" ", "").isalpha()
+
+
+def localize_reply(message: str, student_text: str) -> str:
+    """Rewrites message in Roman Hinglish (or plain English if student wrote English)."""
+    messages = [
+        {"role": "system", "content": LOCALIZE_PROMPT},
+        {"role": "user", "content": f"Student's message: {student_text[:300]}\n\nMessage to rewrite: {message}"},
+    ]
+    rewritten = _safe_chat_call(messages, temperature=0.3)
+    return rewritten or message
+
+
+def name_request_reply(student_text: str) -> str:
+    """Warmly re-prompts for name when student provided an affirmation or unrelated reply."""
+    messages = [
+        {"role": "system", "content": NAME_REQUEST_REPLY_PROMPT},
+        {"role": "user", "content": student_text[:200]},
+    ]
+    reply = _safe_chat_call(messages, temperature=0.4)
+    return reply or "Theek hai, main aapki poori madad karunga! Pehle aapka shubh naam bata dijiye?"
+
+
+def detect_course_interest(text: str) -> bool:
+    """Detects whether student expressed interest in courses/career guidance."""
+    messages = [
+        {"role": "system", "content": COURSE_INTEREST_CHECK_PROMPT},
+        {"role": "user", "content": text[:200]},
+    ]
+    raw = _safe_chat_call(messages, temperature=0.0).upper()
+    return raw.startswith("YES")
+
+
+def course_interest_reply() -> str:
+    """Warm counselor acknowledgment when user indicates interest in courses."""
+    messages = [
+        {"role": "system", "content": COURSE_INTEREST_REPLY_PROMPT},
+        {"role": "user", "content": "courses"},
+    ]
+    reply = _safe_chat_call(messages, temperature=0.4)
+    return reply or "Haan, main aapko Cybrom ke sabhi top courses bata sakta hoon! Usse pehle aapka naam bata dijiye?"
+
+
+def greeting_reply() -> str:
+    """Generates warm initial greeting."""
+    messages = [
+        {"role": "system", "content": GREETING_REPLY_PROMPT},
+        {"role": "user", "content": "hi"},
+    ]
+    reply = _safe_chat_call(messages, temperature=0.4)
+    return reply or "Hello! Cybrom Course Advisor mein aapka swagat hai. Aaj kis course ya career guidance mein help chahiye?"
+
+
+def mirror_language(message: str, student_text: str) -> str:
+    """Rewrites message to mirror the student's conversational tone."""
+    messages = [
+        {"role": "system", "content": MIRROR_LANGUAGE_PROMPT},
+        {"role": "user", "content": f"Student wrote: {student_text[:300]}\n\nMessage to rewrite: {message}"},
+    ]
+    reply = _safe_chat_call(messages, temperature=0.3)
+    return reply or message
+
+
+def answer_general_question(user_message: str, history: List[Dict[str, str]]) -> str:
+    """Answers general tech or tutoring questions concisely."""
+    messages = [{"role": "system", "content": GENERAL_ASSISTANT_PROMPT}] + history[-6:] + [
+        {"role": "user", "content": user_message[:500]}
+    ]
+    reply = _safe_chat_call(messages, temperature=0.4)
+    return reply or "Main aapko iske baare mein zaroor batata, par ek baar admissions team se bhi confirm kar sakte hain."
+
+
+def interpret_program_from_text(text: str) -> str:
+    """Interprets free text into one of the 5 main programs."""
+    prompt = """A student typed a free-text answer describing what they want to learn.
+Map it to EXACTLY ONE of these program names:
+Fullstack Web, Cyber Security, Data Programs, AI-ML, Digital Marketing
+
+Respond with ONLY the program name or NONE. No other text."""
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": text[:200]},
+    ]
+    raw = _safe_chat_call(messages, temperature=0.0)
+    valid = {"Fullstack Web", "Cyber Security", "Data Programs", "AI-ML", "Digital Marketing"}
+    return raw if raw in valid else ""
+
+
+def general_followup(history: List[Dict[str, str]], shown_courses: List[Dict[str, Any]]) -> str:
+    """Handles follow-up discussion about currently displayed courses."""
+    catalog = "\n".join(
+        f"- {c.get('title', '')} | duration: {c.get('duration', 'Contact us')} | mode: {c.get('mode', 'Contact us')} "
+        f"| modules: {', '.join(c.get('modules_preview', []))}"
+        for c in shown_courses[:6]
+    )
+    prompt = SYSTEM_GUARDRAIL + f"\nCOURSES CURRENTLY DISCUSSED:\n{catalog}\nOnly state facts given above."
+    messages = [{"role": "system", "content": prompt}] + history[-6:]
+    reply = _safe_chat_call(messages, temperature=0.4)
+    return reply or "In courses ke baare mein aap kuch bhi pooch sakte hain ya directly syllabus dekh sakte hain!"
+
+
+def handoff_reply() -> str:
+    """Generates warm confirmation for counselor callback."""
+    messages = [
+        {"role": "system", "content": HANDOFF_REPLY_PROMPT},
+        {"role": "user", "content": "connect with counselor"},
+    ]
+    reply = _safe_chat_call(messages, temperature=0.4)
+    return reply or "Zaroor! Hamare senior admissions counselor aapse jald hi WhatsApp ya call par connect karenge."
+
+
+def abusive_or_offtopic_reply() -> str:
+    """Generates calm redirection when user input is abusive or off-topic."""
+    messages = [
+        {"role": "system", "content": ABUSIVE_OR_OFFTOPIC_PROMPT},
+        {"role": "user", "content": "help with course"},
+    ]
+    reply = _safe_chat_call(messages, temperature=0.3)
+    return reply or "Main Cybrom ka Course Advisor hoon. Kya aap IT aur tech courses ke baare mein jaanna chahenge?"

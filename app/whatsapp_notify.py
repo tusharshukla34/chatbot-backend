@@ -1,25 +1,5 @@
-import requests
-from app.config import CALLMEBOT_PHONE, CALLMEBOT_APIKEY, TEST_MODE
-
-CALLMEBOT_URL = "https://api.callmebot.com/whatsapp.php"
-
-
-def _send(message: str):
-    if TEST_MODE:
-        print("[WhatsApp] Skipped — TEST_MODE is on")
-        return
-    if not CALLMEBOT_PHONE or not CALLMEBOT_APIKEY:
-        print("[WhatsApp] Skipped — CALLMEBOT_PHONE or CALLMEBOT_APIKEY not set in .env")
-        return
-    try:
-        params = {"phone": CALLMEBOT_PHONE, "text": message, "apikey": CALLMEBOT_APIKEY}
-        response = requests.get(CALLMEBOT_URL, params=params, timeout=10)
-        if response.status_code == 200:
-            print("[WhatsApp] Notification sent")
-        else:
-            print(f"[WhatsApp] Failed ({response.status_code}): {response.text}")
-    except requests.RequestException as e:
-        print(f"[WhatsApp] Error sending notification: {e}")
+from typing import Optional
+from app.notifiers import dispatcher
 
 
 def send_lead_notification(first_name: str, whatsapp_number: str, email: str):
@@ -29,7 +9,11 @@ def send_lead_notification(first_name: str, whatsapp_number: str, email: str):
         f"WhatsApp: {whatsapp_number}\n"
         f"Email: {email}"
     )
-    _send(message)
+    dispatcher.dispatch(
+        "lead_captured",
+        message,
+        {"first_name": first_name, "whatsapp_number": whatsapp_number, "email": email},
+    )
 
 
 def send_recommendation_notification(first_name: str, whatsapp_number: str, email: str, recommended_courses: str):
@@ -40,7 +24,15 @@ def send_recommendation_notification(first_name: str, whatsapp_number: str, emai
         f"Email: {email}\n"
         f"Courses: {recommended_courses}"
     )
-    _send(message)
+    dispatcher.dispatch(
+        "recommendation_shown",
+        {
+            "first_name": first_name,
+            "whatsapp_number": whatsapp_number,
+            "email": email,
+            "recommended_courses": recommended_courses,
+        },
+    )
 
 
 def send_selection_notification(first_name: str, whatsapp_number: str, email: str, selected_course: str):
@@ -51,4 +43,27 @@ def send_selection_notification(first_name: str, whatsapp_number: str, email: st
         f"Email: {email}\n"
         f"Chose: {selected_course}"
     )
-    _send(message)
+    dispatcher.dispatch(
+        "course_selected",
+        {
+            "first_name": first_name,
+            "whatsapp_number": whatsapp_number,
+            "email": email,
+            "selected_course": selected_course,
+        },
+    )
+
+
+def send_handoff_notification(first_name: str, whatsapp_number: str, email: str, reason: str = ""):
+    message = (
+        f"🚨 Counselor Call Requested!\n"
+        f"Name: {first_name or 'Prospective Student'}\n"
+        f"WhatsApp: {whatsapp_number or 'Not provided yet'}\n"
+        f"Email: {email or 'Not provided yet'}\n"
+        f"Reason: {reason or 'Requested human counselor'}"
+    )
+    dispatcher.dispatch(
+        "counselor_callback",
+        message,
+        {"first_name": first_name, "whatsapp_number": whatsapp_number, "email": email, "reason": reason},
+    )

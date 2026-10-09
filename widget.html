@@ -867,6 +867,182 @@
       transform: translateY(-1px);
     }
 
+    /* ========================================================
+       EASTER EGG PRANK: ROGUE BUTTON & HERO AVATAR ANIMATIONS
+       ======================================================== */
+    .send-btn-ghost {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .send-btn.rogue-mode {
+      position: absolute !important;
+      z-index: 9999 !important;
+      cursor: grab !important;
+      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.7), 0 0 20px rgba(129, 140, 248, 0.8) !important;
+      transition: left 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28),
+                  top 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28),
+                  transform 0.2s ease !important;
+      animation: rogueJiggle 0.35s infinite alternate ease-in-out;
+    }
+
+    @keyframes rogueJiggle {
+      0% { transform: rotate(-10deg) scale(1.08); }
+      100% { transform: rotate(10deg) scale(1.16); }
+    }
+
+    .send-btn.rogue-hit {
+      animation: rogueHitSpin 0.7s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+      background: linear-gradient(135deg, #EF4444 0%, #B91C1C 100%) !important;
+      box-shadow: 0 0 25px rgba(239, 68, 68, 0.9) !important;
+    }
+
+    @keyframes rogueHitSpin {
+      0% { transform: scale(1.5) rotate(0deg); filter: brightness(2.2); }
+      50% { transform: scale(0.85) rotate(540deg); }
+      100% { transform: scale(1) rotate(1080deg); filter: brightness(1); }
+    }
+
+    .rogue-taunt {
+      position: absolute;
+      background: #1E1B4B;
+      color: #F8FAFC;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 9px;
+      border-radius: 10px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 10000;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      animation: tauntFade 0.85s forwards ease-out;
+    }
+
+    @keyframes tauntFade {
+      0% { opacity: 0; transform: translateY(0) scale(0.8); }
+      20% { opacity: 1; transform: translateY(-8px) scale(1); }
+      75% { opacity: 1; transform: translateY(-16px) scale(1); }
+      100% { opacity: 0; transform: translateY(-24px) scale(0.9); }
+    }
+
+    .hero-avatar-wrap {
+      position: absolute;
+      z-index: 9998;
+      width: 72px;
+      height: 90px;
+      cursor: pointer;
+      user-select: none;
+      transition: left 1s cubic-bezier(0.25, 1, 0.5, 1),
+                  top 1s cubic-bezier(0.25, 1, 0.5, 1),
+                  bottom 1s cubic-bezier(0.25, 1, 0.5, 1),
+                  right 1s cubic-bezier(0.25, 1, 0.5, 1),
+                  transform 0.4s ease;
+      filter: drop-shadow(0 8px 18px rgba(15, 23, 42, 0.3));
+    }
+
+    .hero-avatar-wrap.peeking {
+      animation: avatarPeekIn 0.65s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+    }
+
+    @keyframes avatarPeekIn {
+      0% { transform: translate(65px, 45px) rotate(22deg); opacity: 0; }
+      70% { transform: translate(-5px, -5px) rotate(-6deg); opacity: 1; }
+      100% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+    }
+
+    .hero-avatar-wrap.walking {
+      animation: avatarWalkBob 0.32s infinite alternate ease-in-out;
+    }
+
+    @keyframes avatarWalkBob {
+      0% { transform: translateY(0) rotate(-4deg); }
+      100% { transform: translateY(-7px) rotate(4deg); }
+    }
+
+    .avatar-bubble {
+      position: absolute;
+      bottom: 86px;
+      right: -10px;
+      background: linear-gradient(135deg, #1E1B4B 0%, #312E81 100%);
+      color: #FFFFFF;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.3;
+      padding: 7px 12px;
+      border-radius: 12px;
+      border-bottom-right-radius: 3px;
+      box-shadow: 0 6px 18px rgba(30, 27, 75, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.15);
+      white-space: nowrap;
+      pointer-events: none;
+      animation: bubblePop 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+      z-index: 10001;
+    }
+
+    .avatar-bubble::after {
+      content: "";
+      position: absolute;
+      bottom: -6px;
+      right: 16px;
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid #312E81;
+    }
+
+    @keyframes bubblePop {
+      0% { opacity: 0; transform: scale(0.6) translateY(10px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .avatar-gun-arm {
+      transform-origin: 48px 36px;
+      transition: transform 0.25s ease-out;
+    }
+
+    .laser-bullet {
+      position: absolute;
+      width: 16px;
+      height: 5px;
+      background: #F43F5E;
+      box-shadow: 0 0 10px #F43F5E, 0 0 20px #FB7185, 0 0 4px #FFFFFF;
+      border-radius: 3px;
+      z-index: 10000;
+      pointer-events: none;
+      transition: left 0.18s linear, top 0.18s linear;
+    }
+
+    .impact-explosion {
+      position: absolute;
+      font-size: 28px;
+      transform: translate(-50%, -50%) scale(0.5);
+      animation: explodeBurst 0.55s ease-out forwards;
+      z-index: 10001;
+      pointer-events: none;
+    }
+
+    @keyframes explodeBurst {
+      0% { transform: translate(-50%, -50%) scale(0.4); opacity: 1; filter: drop-shadow(0 0 14px #EF4444); }
+      50% { transform: translate(-50%, -50%) scale(1.7); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(2.3); opacity: 0; }
+    }
+
+    .dizzy-stars {
+      position: absolute;
+      font-size: 20px;
+      pointer-events: none;
+      animation: dizzySpin 0.75s infinite linear;
+      z-index: 10000;
+    }
+
+    @keyframes dizzySpin {
+      0% { transform: translate(-50%, -50%) rotate(0deg) scale(0.9); }
+      100% { transform: translate(-50%, -50%) rotate(360deg) scale(1.15); }
+    }
+
     @media (max-width: 480px) {
       body {
         padding: 0;
@@ -910,7 +1086,7 @@
             </div>
           </div>
           <div class="header-titles">
-            <h1>Cybrom AI Advisor</h1>
+            <h1>Cybrom AI</h1>
             <div class="tagline">
               <span>Your Personal Tech Counselor</span>
               <span class="status-badge"><span class="pulse-dot"></span> Online</span>
@@ -969,7 +1145,7 @@
       <div class="typing-dot"></div>
     </div>
 
-    <form class="chat-input" id="chatForm" onsubmit="event.preventDefault(); sendMessage();">
+    <form class="chat-input" id="chatForm" onsubmit="handleChatSubmit(event);">
       <div class="input-wrapper">
         <input type="text" id="userInput" placeholder="Ask anything about courses, career..."
           aria-label="Type your message" autocomplete="off" />
@@ -1012,6 +1188,7 @@
       resetBtn.addEventListener("click", () => {
         if (confirm("Reset conversation and start fresh?")) {
           sessionStorage.removeItem("cybrom_session_id");
+          sessionStorage.removeItem("cybrom_easter_egg_done");
           window.location.reload();
         }
       });
@@ -1239,6 +1416,435 @@
         typingEl.classList.remove("show");
         inputEl.focus();
       }
+    }
+
+    // ========================================================
+    // EASTER EGG PRANK: ROGUE ENTER BUTTON & HERO RESCUE AVATAR
+    // ========================================================
+    let prankCompleted = sessionStorage.getItem("cybrom_easter_egg_done") === "true";
+    let prankIsRunning = false;
+    let rogueDodgeCount = 0;
+    let rogueTimer = null;
+    let evasionMoveHandler = null;
+
+    // Web Audio Synthesizer for high quality cartoon & retro arcade SFX
+    let sfxAudioContext = null;
+    function getSfxContext() {
+      if (!sfxAudioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) sfxAudioContext = new AudioContextClass();
+      }
+      if (sfxAudioContext && sfxAudioContext.state === "suspended") {
+        sfxAudioContext.resume().catch(() => {});
+      }
+      return sfxAudioContext;
+    }
+
+    function playBoingSfx() {
+      try {
+        const ctx = getSfxContext();
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        const now = ctx.currentTime;
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.exponentialRampToValueAtTime(560, now + 0.22);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.26);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.26);
+      } catch (e) {}
+    }
+
+    function playLaserSfx() {
+      try {
+        const ctx = getSfxContext();
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        const now = ctx.currentTime;
+        osc.frequency.setValueAtTime(1300, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.18);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+      } catch (e) {}
+    }
+
+    function playExplosionSfx() {
+      try {
+        const ctx = getSfxContext();
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        const now = ctx.currentTime;
+        osc.frequency.setValueAtTime(190, now);
+        osc.frequency.exponentialRampToValueAtTime(35, now + 0.25);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.28);
+      } catch (e) {}
+    }
+
+    function playDingSfx() {
+      try {
+        const ctx = getSfxContext();
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        const now = ctx.currentTime;
+        osc.frequency.setValueAtTime(659.25, now);
+        osc.frequency.setValueAtTime(880, now + 0.08);
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.38);
+      } catch (e) {}
+    }
+
+    function showTauntBadge(x, y, text) {
+      const widget = document.querySelector(".chat-widget");
+      if (!widget) return;
+      const badge = document.createElement("div");
+      badge.className = "rogue-taunt";
+      badge.textContent = text;
+      badge.style.left = (x - 20) + "px";
+      badge.style.top = (y - 25) + "px";
+      widget.appendChild(badge);
+      setTimeout(() => badge.remove(), 850);
+    }
+
+    function dodgeRogueButton() {
+      const widget = document.querySelector(".chat-widget");
+      if (!widget || !prankIsRunning) return;
+      const rect = widget.getBoundingClientRect();
+      const currentX = parseFloat(sendBtn.style.left) || (rect.width - 60);
+      const currentY = parseFloat(sendBtn.style.top) || (rect.height - 60);
+
+      // Random target inside widget avoiding edges
+      const minX = 25;
+      const maxX = rect.width - 70;
+      const minY = 90;
+      const maxY = rect.height - 120;
+
+      let newX = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+      let newY = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+
+      if (Math.hypot(newX - currentX, newY - currentY) < 70) {
+        newX = (newX + 120) % (maxX - minX) + minX;
+        newY = (newY + 120) % (maxY - minY) + minY;
+      }
+
+      sendBtn.style.left = newX + "px";
+      sendBtn.style.top = newY + "px";
+      playBoingSfx();
+
+      rogueDodgeCount++;
+      const taunts = ["Nope! 😜", "Catch me! 🏃💨", "Too slow! ⚡", "Missed me! 🤪", "Hehe! 👻", "Can't touch this! 🕺"];
+      showTauntBadge(currentX, currentY, taunts[rogueDodgeCount % taunts.length]);
+    }
+
+    function startRogueButtonPrank() {
+      prankIsRunning = true;
+      const widget = document.querySelector(".chat-widget");
+      const chatForm = document.getElementById("chatForm");
+      if (!widget || !chatForm) return;
+
+      const widgetRect = widget.getBoundingClientRect();
+      const btnRect = sendBtn.getBoundingClientRect();
+
+      // Create ghost placeholder so input layout doesn't shift
+      const ghost = document.createElement("div");
+      ghost.className = "send-btn-ghost";
+      ghost.id = "sendBtnGhost";
+      chatForm.insertBefore(ghost, sendBtn);
+
+      // Move sendBtn directly into chat-widget with absolute position
+      widget.appendChild(sendBtn);
+      sendBtn.classList.add("rogue-mode");
+
+      const startX = btnRect.left - widgetRect.left;
+      const startY = btnRect.top - widgetRect.top;
+      sendBtn.style.left = startX + "px";
+      sendBtn.style.top = startY + "px";
+
+      setTimeout(() => {
+        playBoingSfx();
+        sendBtn.style.left = (widgetRect.width / 2 - 22) + "px";
+        sendBtn.style.top = (widgetRect.height * 0.55) + "px";
+        showTauntBadge(startX, startY, "Boing! 💨");
+      }, 50);
+
+      // Proximity cursor evasion
+      evasionMoveHandler = function (e) {
+        if (!prankIsRunning) return;
+        const bRect = sendBtn.getBoundingClientRect();
+        const btnCenterX = bRect.left + bRect.width / 2;
+        const btnCenterY = bRect.top + bRect.height / 2;
+        const dist = Math.hypot(e.clientX - btnCenterX, e.clientY - btnCenterY);
+        if (dist < 85) {
+          dodgeRogueButton();
+        }
+      };
+      widget.addEventListener("mousemove", evasionMoveHandler);
+
+      sendBtn.onmouseenter = dodgeRogueButton;
+      sendBtn.onclick = function (e) {
+        if (prankIsRunning) {
+          e.preventDefault();
+          e.stopPropagation();
+          dodgeRogueButton();
+        }
+      };
+
+      // After 3.5 seconds, avatar peeks out from bottom right!
+      rogueTimer = setTimeout(() => {
+        if (prankIsRunning) {
+          spawnPeekingHeroAvatar();
+        }
+      }, 3500);
+    }
+
+    function spawnPeekingHeroAvatar() {
+      const widget = document.querySelector(".chat-widget");
+      if (!widget || !prankIsRunning) return;
+
+      const avatarWrap = document.createElement("div");
+      avatarWrap.className = "hero-avatar-wrap peeking";
+      avatarWrap.id = "heroAvatarWrap";
+      avatarWrap.style.bottom = "12px";
+      avatarWrap.style.right = "10px";
+
+      avatarWrap.innerHTML = `
+        <div class="avatar-bubble" id="avatarBubble">You want help? Click me! 🎯</div>
+        <svg viewBox="0 0 64 80" width="64" height="80" fill="none">
+          <g class="avatar-legs" id="avatarLegs">
+            <rect x="20" y="52" width="7" height="18" rx="3.5" fill="#1E293B" />
+            <ellipse cx="23.5" cy="71" rx="5.5" ry="3.5" fill="#0F172A" />
+            <rect x="35" y="52" width="7" height="18" rx="3.5" fill="#1E293B" />
+            <ellipse cx="38.5" cy="71" rx="5.5" ry="3.5" fill="#0F172A" />
+          </g>
+          <path d="M16 32 C16 28 22 26 32 26 C42 26 48 28 48 32 L46 54 C46 56 42 58 32 58 C22 58 18 56 18 54 Z" fill="url(#avatarCoatGrad)" />
+          <path d="M26 26 L32 38 L38 26" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" />
+          <polygon points="32,38 30,46 32,48 34,46" fill="#F43F5E" />
+          <circle cx="32" cy="18" r="13" fill="#FFE4E6" stroke="#CBD5E1" stroke-width="1.5" />
+          <path d="M19 16 C20 9 27 6 34 7 C40 8 45 12 45 16 C42 12 36 10 30 11 C24 12 21 14 19 16 Z" fill="#0F172A" />
+          <path d="M22 17 Q27 15 32 17 Q37 15 42 17 L41 21 Q37 23 32 20 Q27 23 23 21 Z" fill="#0284C7" stroke="#0F172A" stroke-width="1.5" />
+          <line x1="24" y1="18" x2="29" y2="19" stroke="#E0F2FE" stroke-width="1.2" stroke-linecap="round" />
+          <line x1="34" y1="18" x2="39" y2="19" stroke="#E0F2FE" stroke-width="1.2" stroke-linecap="round" />
+          <path d="M28 25 Q32 28 36 25" stroke="#991B1B" stroke-width="1.5" stroke-linecap="round" />
+          <g class="avatar-left-arm">
+            <path d="M16 32 Q10 38 12 46" stroke="#4338CA" stroke-width="6" stroke-linecap="round" />
+            <circle cx="12" cy="46" r="3.5" fill="#FFE4E6" />
+          </g>
+          <g class="avatar-gun-arm" id="avatarGunArm">
+            <path d="M48 32 Q54 36 52 42" stroke="#4338CA" stroke-width="6" stroke-linecap="round" />
+            <circle cx="52" cy="42" r="3.5" fill="#FFE4E6" />
+            <g class="blaster-gun" id="blasterGun" opacity="0" transform="translate(48, 36)">
+              <rect x="0" y="-3" width="16" height="6" rx="2" fill="#1E293B" />
+              <rect x="5" y="2" width="4" height="7" rx="1.5" fill="#475569" />
+              <rect x="13" y="-2" width="6" height="4" rx="1" fill="#0284C7" />
+              <circle cx="19" cy="0" r="2.2" fill="#38BDF8" />
+            </g>
+          </g>
+          <defs>
+            <linearGradient id="avatarCoatGrad" x1="16" y1="26" x2="48" y2="58" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#4F46E5" />
+              <stop offset="1" stop-color="#3730A3" />
+            </linearGradient>
+          </defs>
+        </svg>
+      `;
+
+      widget.appendChild(avatarWrap);
+
+      avatarWrap.addEventListener("click", () => {
+        executeHeroRescue(avatarWrap);
+      }, { once: true });
+    }
+
+    function executeHeroRescue(avatarWrap) {
+      const widget = document.querySelector(".chat-widget");
+      const bubble = document.getElementById("avatarBubble");
+      const blaster = document.getElementById("blasterGun");
+      const gunArm = document.getElementById("avatarGunArm");
+      if (!widget || !avatarWrap) return;
+
+      if (bubble) bubble.textContent = "I got this! 🕶️💥";
+      avatarWrap.classList.remove("peeking");
+      avatarWrap.classList.add("walking");
+
+      // Walk towards the action area
+      avatarWrap.style.right = "auto";
+      avatarWrap.style.left = "38px";
+      avatarWrap.style.bottom = "68px";
+
+      setTimeout(() => {
+        avatarWrap.classList.remove("walking");
+        if (bubble) bubble.textContent = "Freeze, rogue button! 🔫";
+
+        // Pull out blaster
+        if (blaster) blaster.setAttribute("opacity", "1");
+
+        const aRect = avatarWrap.getBoundingClientRect();
+        const bRect = sendBtn.getBoundingClientRect();
+        const gunX = aRect.left + 52;
+        const gunY = aRect.top + 42;
+        const targetX = bRect.left + bRect.width / 2;
+        const targetY = bRect.top + bRect.height / 2;
+        const angleDeg = (Math.atan2(targetY - gunY, targetX - gunX) * 180) / Math.PI;
+
+        if (gunArm) {
+          gunArm.style.transform = `rotate(${angleDeg}deg)`;
+        }
+
+        setTimeout(() => {
+          fireLaserShot(gunX, gunY, targetX, targetY, () => {
+            knockOutRogueButton(avatarWrap);
+          });
+        }, 380);
+      }, 1050);
+    }
+
+    function fireLaserShot(startX, startY, endX, endY, onImpact) {
+      const widget = document.querySelector(".chat-widget");
+      const wRect = widget.getBoundingClientRect();
+      playLaserSfx();
+
+      const bullet = document.createElement("div");
+      bullet.className = "laser-bullet";
+
+      const localStartX = startX - wRect.left;
+      const localStartY = startY - wRect.top;
+      const localEndX = endX - wRect.left;
+      const localEndY = endY - wRect.top;
+
+      const angle = Math.atan2(localEndY - localStartY, localEndX - localStartX);
+      bullet.style.left = localStartX + "px";
+      bullet.style.top = localStartY + "px";
+      bullet.style.transform = `rotate(${angle}rad)`;
+      widget.appendChild(bullet);
+
+      setTimeout(() => {
+        bullet.style.left = localEndX + "px";
+        bullet.style.top = localEndY + "px";
+      }, 20);
+
+      setTimeout(() => {
+        bullet.remove();
+        onImpact();
+      }, 200);
+    }
+
+    function knockOutRogueButton(avatarWrap) {
+      const widget = document.querySelector(".chat-widget");
+      const chatForm = document.getElementById("chatForm");
+      const ghost = document.getElementById("sendBtnGhost");
+      const bubble = document.getElementById("avatarBubble");
+      const blaster = document.getElementById("blasterGun");
+      const gunArm = document.getElementById("avatarGunArm");
+      if (!widget || !sendBtn) return;
+
+      if (evasionMoveHandler) {
+        widget.removeEventListener("mousemove", evasionMoveHandler);
+      }
+      sendBtn.onmouseenter = null;
+      sendBtn.onclick = null;
+
+      playExplosionSfx();
+      const bRect = sendBtn.getBoundingClientRect();
+      const wRect = widget.getBoundingClientRect();
+      const explosionX = bRect.left + bRect.width / 2 - wRect.left;
+      const explosionY = bRect.top + bRect.height / 2 - wRect.top;
+
+      const burst = document.createElement("div");
+      burst.className = "impact-explosion";
+      burst.textContent = "💥";
+      burst.style.left = explosionX + "px";
+      burst.style.top = explosionY + "px";
+      widget.appendChild(burst);
+      setTimeout(() => burst.remove(), 600);
+
+      sendBtn.classList.remove("rogue-mode");
+      sendBtn.classList.add("rogue-hit");
+
+      const stars = document.createElement("div");
+      stars.className = "dizzy-stars";
+      stars.textContent = "💫";
+      stars.style.left = explosionX + "px";
+      stars.style.top = (explosionY - 24) + "px";
+      widget.appendChild(stars);
+
+      setTimeout(() => {
+        stars.remove();
+        if (ghost) {
+          const gRect = ghost.getBoundingClientRect();
+          const targetX = gRect.left - wRect.left;
+          const targetY = gRect.top - wRect.top;
+          sendBtn.style.transition = "all 0.45s cubic-bezier(0.25, 1, 0.5, 1)";
+          sendBtn.style.left = targetX + "px";
+          sendBtn.style.top = targetY + "px";
+        }
+
+        setTimeout(() => {
+          playDingSfx();
+          sendBtn.classList.remove("rogue-hit");
+          sendBtn.style = "";
+          if (ghost) {
+            chatForm.replaceChild(sendBtn, ghost);
+          }
+
+          if (bubble) bubble.textContent = "All set! You can send now! 😎✌️";
+          if (blaster) blaster.setAttribute("opacity", "0");
+          if (gunArm) gunArm.style.transform = "rotate(0deg)";
+
+          setTimeout(() => {
+            if (avatarWrap) {
+              avatarWrap.classList.add("walking");
+              avatarWrap.style.left = (wRect.width + 80) + "px";
+              avatarWrap.style.opacity = "0";
+              setTimeout(() => avatarWrap.remove(), 1100);
+            }
+
+            prankIsRunning = false;
+            prankCompleted = true;
+            sessionStorage.setItem("cybrom_easter_egg_done", "true");
+            inputEl.focus();
+          }, 950);
+        }, 480);
+      }, 700);
+    }
+
+    function handleChatSubmit(e) {
+      if (e) e.preventDefault();
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      // On the very first text entry, run the interactive rogue button easter egg prank!
+      if (!prankCompleted && !prankIsRunning) {
+        startRogueButtonPrank();
+        return;
+      }
+
+      if (prankIsRunning) {
+        return; // Don't allow submit while rescue sequence is happening
+      }
+
+      sendMessage();
     }
 
     function sendMessage() {

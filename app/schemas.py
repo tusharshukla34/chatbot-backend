@@ -1,5 +1,25 @@
+import re
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _clean_gender(text: str) -> str:
+    if not text:
+        return text
+    text = re.sub(r"\bmadad\s+kar\s+sakta/sakti\s+hoon\b", "madad karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bmadad\s+kar\s+sakti/sakta\s+hoon\b", "madad karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bhelp\s+kar\s+sakta/sakti\s+hoon\b", "help karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bhelp\s+kar\s+sakti/sakta\s+hoon\b", "help karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bkar\s+sakta/sakti\s+hoon\b", "karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bkar\s+sakti/sakta\s+hoon\b", "karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakta/sakti\s+hoon\b", "hoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakta/sakti\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakti/sakta\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakta/ti\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakta\s+ya\s+sakti\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bkar\s+sakta/sakti\b", "karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"[ ]{2,}", " ", text)
+    return text.strip()
 
 
 class ChatRequest(BaseModel):
@@ -13,6 +33,11 @@ class ChatResponse(BaseModel):
     quick_replies: List[str] = []
     step: int = 1
     step_label: str = "Level"
+
+    @field_validator("reply")
+    @classmethod
+    def sanitize_reply(cls, v: str) -> str:
+        return _clean_gender(v)
 
 
 class MarkInterestRequest(BaseModel):

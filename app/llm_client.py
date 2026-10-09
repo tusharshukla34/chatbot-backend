@@ -32,6 +32,33 @@ def _parse_json(text: str) -> Dict[str, Any]:
     return json.loads(cleaned)
 
 
+def clean_gender_slashes(text: str) -> str:
+    """Removes gendered words 'sakta', 'sakti', 'sakta/sakti', etc. in favor of gender-neutral phrasing."""
+    if not text:
+        return text
+    # 1. Replace compound self-referential / assistance phrases ("kaise madad kar sakta/sakti hoon")
+    text = re.sub(r"\b(?:kaise\s+)?(?:madad|help)\s+kar\s+sakt[ai](?:/sakt[ai])?\s+hoon\b", "kaise help karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bmadad\s+kar\s+sakt[ai](?:/sakt[ai])?\s+hoon\b", "madad karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bhelp\s+kar\s+sakt[ai](?:/sakt[ai])?\s+hoon\b", "help karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bkar\s+sakt[ai](?:/sakt[ai])?\s+hoon\b", "karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakt[ai]/sakt[ai]\s+hoon\b", "hoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakt[ai]/sakt[ai]\b", "sakte", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakta/ti\b", "sakte", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakta\s+ya\s+sakti\b", "sakte", text, flags=re.IGNORECASE)
+
+    # 2. Self-referential "sakta hoon" or "sakti hoon" -> "karoon"
+    text = re.sub(r"\bkar\s+sakta\s+hoon\b", "karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bkar\s+sakti\s+hoon\b", "karoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakta\s+hoon\b", "sakoon", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakti\s+hoon\b", "sakoon", text, flags=re.IGNORECASE)
+
+    # 3. Any remaining lone 'sakta' or 'sakti' (male/female singular) -> gender-neutral 'sakte'
+    text = re.sub(r"\bsakta\b", "sakte", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bsakti\b", "sakte", text, flags=re.IGNORECASE)
+    text = re.sub(r"[ ]{2,}", " ", text)
+    return text.strip()
+
+
 def _safe_chat_call(messages: List[Dict[str, str]], temperature: float = 0.3) -> str:
     """Helper to call Groq chat completion with timeout and exception safety."""
     if not client:
@@ -44,7 +71,8 @@ def _safe_chat_call(messages: List[Dict[str, str]], temperature: float = 0.3) ->
             temperature=temperature,
             timeout=8.0,
         )
-        return response.choices[0].message.content.strip()
+        raw_text = response.choices[0].message.content.strip()
+        return clean_gender_slashes(raw_text)
     except Exception as e:
         logger.error(f"Groq API call error: {e}")
         return ""
@@ -53,10 +81,13 @@ def _safe_chat_call(messages: List[Dict[str, str]], temperature: float = 0.3) ->
 def classify_intent(text: str) -> str:
     """Classifies user intent using fast rules and LLM fallback."""
     from app.browse_resolver import (
-        is_greeting, is_handoff_request, is_complaint, is_abusive, is_general_question
+        is_greeting, is_handoff_request, is_complaint, is_abusive, is_general_question,
+        is_exit_or_refusal
     )
 
     t = text.strip()
+    if is_exit_or_refusal(t):
+        return "disengagement_exit"
     if is_abusive(t):
         return "abusive"
     if is_handoff_request(t):
@@ -66,26 +97,22 @@ def classify_intent(text: str) -> str:
     if is_greeting(t):
         return "greeting"
 
-    # For non-question inputs, verify if it matches catalog options or is a typical flow response
-    if not is_general_question(t):
-        from app.matching import get_programs
-        from app.course_store import course_store
+    # Fast check for direct catalog entities (program names, tracks, course titles)
+    from app.matching import get_programs
+    from app.course_store import course_store
 
-        t_clean = t.lower()
-        if t_clean in [p.lower() for p in get_programs()]:
-            return "flow_answer"
+    t_clean = t.lower()
+    if t_clean in [p.lower() for p in get_programs()]:
+        return "flow_answer"
 
-        all_courses_data = course_store.all_courses()
-        all_subs = {(r.get("subprogram") or "").strip().lower() for r in all_courses_data if r.get("subprogram")}
-        if t_clean in all_subs:
-            return "flow_answer"
+    all_courses_data = course_store.all_courses()
+    all_subs = {(r.get("subprogram") or "").strip().lower() for r in all_courses_data if r.get("subprogram")}
+    if t_clean in all_subs:
+        return "flow_answer"
 
-        all_titles = {(r.get("course_title") or "").strip().lower() for r in all_courses_data if r.get("course_title")}
-        if t_clean in all_titles:
-            return "flow_answer"
-
-        if len(t.split()) <= 8:
-            return "flow_answer"
+    all_titles = {(r.get("course_title") or "").strip().lower() for r in all_courses_data if r.get("course_title")}
+    if t_clean in all_titles:
+        return "flow_answer"
 
     # Use LLM classification
     messages = [
@@ -97,8 +124,9 @@ def classify_intent(text: str) -> str:
         data = _parse_json(raw)
         intent = data.get("intent", "flow_answer")
         valid_intents = {
-            "greeting", "flow_answer", "course_question", "general_tech_question",
-            "handoff_request", "complaint_frustration", "abusive", "off_topic"
+            "disengagement_exit", "greeting", "flow_answer", "course_question",
+            "general_tech_question", "handoff_request", "complaint_frustration",
+            "abusive", "off_topic"
         }
         return intent if intent in valid_intents else "flow_answer"
     except Exception:
@@ -207,7 +235,7 @@ def course_interest_reply() -> str:
         {"role": "user", "content": "courses"},
     ]
     reply = _safe_chat_call(messages, temperature=0.4)
-    return reply or "Haan, main aapko Cybrom ke sabhi top courses bata sakta hoon! Usse pehle aapka naam bata dijiye?"
+    return reply or "Haan, main aapko Cybrom ke sabhi top programs guide kar deta hoon! Usse pehle aapka naam bataiye?"
 
 
 def greeting_reply() -> str:
@@ -217,7 +245,7 @@ def greeting_reply() -> str:
         {"role": "user", "content": "hi"},
     ]
     reply = _safe_chat_call(messages, temperature=0.4)
-    return reply or "Hello! Cybrom Course Advisor mein aapka swagat hai. Aaj kis course ya career guidance mein help chahiye?"
+    return reply or "Hello! Cybrom AI mein aapka swagat hai. Aaj kis course ya career guidance mein help chahiye?"
 
 
 def mirror_language(message: str, student_text: str) -> str:
@@ -236,7 +264,7 @@ def answer_general_question(user_message: str, history: List[Dict[str, str]]) ->
         {"role": "user", "content": user_message[:500]}
     ]
     reply = _safe_chat_call(messages, temperature=0.4)
-    return reply or "Main aapko iske baare mein zaroor batata, par ek baar admissions team se bhi confirm kar sakte hain."
+    return reply or "Cybrom admissions team aapse iske baare mein zaroor detail share karegi. Aap batayein, aur kya jaanna chahte hain?"
 
 
 def interpret_program_from_text(text: str) -> str:

@@ -151,6 +151,31 @@ def is_abusive(text: str) -> bool:
     return bool(words.intersection(ABUSIVE_WORDS))
 
 
+EXIT_TRIGGERS = {
+    "exit", "quit", "bye", "goodbye", "alvida", "stop", "close", "band karo",
+    "khatam", "khatam karo", "chodo", "chhod do", "rehne do", "rehn do"
+}
+
+REFUSAL_PHRASES = [
+    "baat nahi karni", "baat nahi krni", "baat nhi karni", "baat nhi krni",
+    "nahi karni", "nahi krni", "nhi karni", "nhi krni",
+    "nahi karni baat", "nahi krni baat",
+    "mujhe baat nahi", "mujhe baat nhi",
+    "don't want to talk", "dont want to talk", "not interested to talk",
+    "baad me baat", "baad mein baat", "baad me", "baad mein",
+    "leave me", "nahi chahiye", "nhi chahiye"
+]
+
+
+def is_exit_or_refusal(text: str) -> bool:
+    t = text.strip().lower()
+    t_clean = re.sub(r"[^\w\s]", " ", t).strip()
+    words = t_clean.split()
+    if t_clean in EXIT_TRIGGERS or (len(words) == 1 and words[0] in EXIT_TRIGGERS):
+        return True
+    return any(p in t_clean for p in REFUSAL_PHRASES)
+
+
 def resolve_program_exact(text: str) -> Optional[str]:
     """Matches text against known programs via exact name or keyword list with word boundaries."""
     t = text.strip().lower()

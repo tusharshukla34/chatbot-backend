@@ -41,6 +41,7 @@ from app.browse_resolver import (
     REAL_PROGRAMS,
     is_abusive,
     is_complaint,
+    is_exit_or_refusal,
     is_general_question,
     is_greeting,
     is_handoff_request,
@@ -52,6 +53,7 @@ from app.llm_client import (
     answer_general_question,
     answer_grounded_interruption,
     classify_intent,
+    clean_gender_slashes,
     course_interest_reply,
     detect_course_interest,
     general_followup,
@@ -449,6 +451,43 @@ def chat(req: ChatRequest, request: Request):
     append_message(req.session_id, "user", raw_text)
     session.setdefault("history", []).append({"role": "user", "content": raw_text})
 
+    # 0. Early exit / refusal handling at ANY time
+    if is_exit_or_refusal(raw_text):
+        reply = "Koi baat nahi! Jab bhi aapka mann bane ya career guidance ki zaroorat ho, main yahan available hoon. Have a wonderful day! 👋"
+        append_message(req.session_id, "assistant", reply)
+        save_session(req.session_id, session)
+        return ChatResponse(
+            reply=reply,
+            suggested_courses=[],
+            quick_replies=["Restart chat", "Explore courses"],
+            step=session.get("step", 1),
+            step_label="Matches" if session.get("browse_stage") == "post_selection" else "Level",
+        )
+
+    # 0b. Fast restart or explore actions
+    t_lower = raw_text.strip().lower()
+    if t_lower in ["restart chat", "restart", "start over", "reset"]:
+        session["lead_captured"] = False
+        session["lead_stage"] = "first_name"
+        session["lead_data"] = {"first_name": "", "whatsapp_number": "", "email": ""}
+        session["browse_stage"] = "education"
+        session["selected_program"] = ""
+        session["selected_subprogram"] = ""
+        session["selected_course"] = ""
+        session["shown_courses"] = []
+        session["history"] = []
+        save_session(req.session_id, session)
+        reply = "Namaste! Main Cybrom AI hoon. Chaliye shuru se shuru karte hain — pehle aapka shubh naam bataiye?"
+        append_message(req.session_id, "assistant", reply)
+        return ChatResponse(reply=reply, suggested_courses=[], quick_replies=[], step=1, step_label="Level")
+
+    if t_lower in ["explore courses", "all courses", "courses dikhao"]:
+        session["browse_stage"] = "program"
+        save_session(req.session_id, session)
+        reply = "Zaroor! Aap kaunse area ya domain ke courses dekhna chahenge?"
+        append_message(req.session_id, "assistant", reply)
+        return ChatResponse(reply=reply, quick_replies=REAL_PROGRAMS + ["Something else"], step=2, step_label="Interest")
+
     is_very_first_message = (
         not session.get("lead_captured", False)
         and session.get("lead_stage") == "first_name"
@@ -470,8 +509,21 @@ def chat(req: ChatRequest, request: Request):
 
     intent = classify_intent(raw_text)
 
-    # 1. Abusive or Off-topic
-    if intent in ["abusive", "off_topic"]:
+    # Re-check disengagement if LLM detected it
+    if intent == "disengagement_exit":
+        reply = "Koi baat nahi! Jab bhi aapka mann bane ya career guidance ki zaroorat ho, main yahan available hoon. Have a wonderful day! 👋"
+        append_message(req.session_id, "assistant", reply)
+        save_session(req.session_id, session)
+        return ChatResponse(
+            reply=reply,
+            suggested_courses=[],
+            quick_replies=["Restart chat", "Explore courses"],
+            step=session.get("step", 1),
+            step_label="Matches" if session.get("browse_stage") == "post_selection" else "Level",
+        )
+
+    # 1. Abusive language warning
+    if intent == "abusive" or is_abusive(raw_text):
         base_warn = abusive_or_offtopic_reply()
         pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
         reply = f"{base_warn}\n\n{pending_p}"
@@ -502,11 +554,11 @@ def chat(req: ChatRequest, request: Request):
         save_session(req.session_id, session)
         return ChatResponse(reply=combined, quick_replies=q_replies, step=step_num, step_label=step_lbl)
 
-    # 3. Interruption Handling (only if not directly answering the pending flow step)
+    # 3. Interruption Handling for questions/random chats at ANY stage
     if not is_answering_current_flow(session, raw_text) and session.get("browse_stage") != "post_selection":
-        if intent in ["course_question", "general_tech_question"] or is_general_question(raw_text):
+        if intent in ["course_question", "general_tech_question", "off_topic"] or is_general_question(raw_text):
             pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
-            if intent == "general_tech_question":
+            if intent in ["general_tech_question", "off_topic"]:
                 ans = answer_general_question(raw_text, session.get("history", []))
                 loc_p = localize_reply(pending_p, raw_text)
                 reply = f"{ans}\n\n{loc_p}"
@@ -527,6 +579,19 @@ def chat(req: ChatRequest, request: Request):
 
     # Step 1: Education Level
     if stage == "education":
+        if is_general_question(raw_text) or len(raw_text.split()) > 4:
+            ans = answer_general_question(raw_text, session.get("history", []))
+            base_prompt = "Aapka current education level kya hai?"
+            loc_prompt = localize_reply(base_prompt, raw_text)
+            reply = f"{ans}\n\n{loc_prompt}"
+            append_message(req.session_id, "assistant", reply)
+            save_session(req.session_id, session)
+            return ChatResponse(
+                reply=reply,
+                quick_replies=["10th pass", "12th pass", "Graduate", "Something else"],
+                step=1,
+                step_label="Level",
+            )
         if len(raw_text) < 2:
             base_reply = "Could you tell me your education level?"
             reply = localize_reply(base_reply, raw_text)
@@ -552,8 +617,10 @@ def chat(req: ChatRequest, request: Request):
         if not program:
             program = interpret_program_from_text(raw_text)
         if not program:
-            base_reply = "I couldn't quite match that. Could you pick one of these areas?"
-            reply = localize_reply(base_reply, raw_text)
+            ans = answer_general_question(raw_text, session.get("history", []))
+            base_prompt = "Aap inme se kaunsa area explore karna chahenge?"
+            loc_prompt = localize_reply(base_prompt, raw_text)
+            reply = f"{ans}\n\n{loc_prompt}" if ans else f"Maine theek se match nahi kar paaya. {loc_prompt}"
             append_message(req.session_id, "assistant", reply)
             save_session(req.session_id, session)
             return ChatResponse(reply=reply, quick_replies=REAL_PROGRAMS + ["Something else"], step=2, step_label="Interest")
@@ -687,8 +754,10 @@ def chat(req: ChatRequest, request: Request):
                     step_label="Matches",
                 )
 
-            base_reply = "Please pick one of the tracks shown, or tell me which interests you."
-            reply = localize_reply(base_reply, raw_text)
+            ans = answer_general_question(raw_text, session.get("history", []))
+            base_prompt = f"Aap {program} ke in tracks mein se kaunsa chunna chahenge?"
+            loc_prompt = localize_reply(base_prompt, raw_text)
+            reply = f"{ans}\n\n{loc_prompt}" if ans else "Kripya in tracks mein se koi ek chunyein."
             append_message(req.session_id, "assistant", reply)
             save_session(req.session_id, session)
             return ChatResponse(reply=reply, quick_replies=subs + ["Something else"], step=3, step_label="Mode")

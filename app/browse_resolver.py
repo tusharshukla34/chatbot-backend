@@ -167,7 +167,25 @@ REFUSAL_PHRASES = [
 ]
 
 
+ACKNOWLEDGEMENT_WORDS = {
+    "ok", "okay", "okk", "k", "theek", "thik", "theek hai", "thik hai",
+    "achha", "acha", "accha", "hmm", "hm", "hmmm", "yes", "ha", "haan",
+    "haa", "yep", "sure", "got it", "understood", "samajh gaya", "samajh gayi",
+    "badhiya", "badiya", "sahi", "sahi hai", "cool", "alright", "fine", "done",
+    "thanks", "thank you", "dhanyawad", "shukriya", "bolo", "ha bolo",
+    "batao", "ha batao", "aage bolo", "aur batao", "continue", "next",
+    "chalo", "let's go", "lets go", "tell me"
+}
+
+
+def is_acknowledgement(text: str) -> bool:
+    t = re.sub(r"[^\w\s]", " ", text.strip().lower()).strip()
+    return t in ACKNOWLEDGEMENT_WORDS or t in {f"{w} ji" for w in ACKNOWLEDGEMENT_WORDS}
+
+
 def is_exit_or_refusal(text: str) -> bool:
+    if is_acknowledgement(text):
+        return False
     t = text.strip().lower()
     t_clean = re.sub(r"[^\w\s]", " ", t).strip()
     words = t_clean.split()

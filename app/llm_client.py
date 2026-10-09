@@ -82,10 +82,12 @@ def classify_intent(text: str) -> str:
     """Classifies user intent using fast rules and LLM fallback."""
     from app.browse_resolver import (
         is_greeting, is_handoff_request, is_complaint, is_abusive, is_general_question,
-        is_exit_or_refusal
+        is_exit_or_refusal, is_acknowledgement
     )
 
     t = text.strip()
+    if is_acknowledgement(t):
+        return "acknowledgement"
     if is_exit_or_refusal(t):
         return "disengagement_exit"
     if is_abusive(t):
@@ -124,7 +126,7 @@ def classify_intent(text: str) -> str:
         data = _parse_json(raw)
         intent = data.get("intent", "flow_answer")
         valid_intents = {
-            "disengagement_exit", "greeting", "flow_answer", "course_question",
+            "disengagement_exit", "acknowledgement", "greeting", "flow_answer", "course_question",
             "general_tech_question", "handoff_request", "complaint_frustration",
             "abusive", "off_topic"
         }

@@ -30,7 +30,9 @@ CYBROM INSTITUTIONAL KNOWLEDGE:
 """
 
 INTENT_CLASSIFICATION_PROMPT = """Analyze the student's message and categorize it into EXACTLY ONE intent:
-- disengagement_exit: User wants to exit, stop chatting, says goodbye, or refuses to talk (e.g. "exit", "bye", "mujhe baat nahi krni", "stop", "chodo", "band karo", "nahi karni", "leave").
+- disengagement_exit: User explicitly wants to exit, quit, stop chatting, or refuses to talk (e.g. "exit", "quit", "bye", "mujhe baat nahi krni", "stop", "chodo", "band karo", "nahi karni", "leave").
+  CRITICAL RULE: Short conversational affirmations or acknowledgements like "ok", "okay", "theek hai", "achha", "sure", "got it", "hmm", "fine", "cool" are NEVER disengagement_exit!
+- acknowledgement: Student is simply acknowledging, confirming, or saying okay/understood (e.g. "ok", "okay", "theek hai", "achha", "sure", "got it", "hmm", "fine", "cool", "alright", "samajh gaya").
 - greeting: Simple greeting (hi, hello, namaste, hey, kaise ho, kya haal hai).
 - flow_answer: Answering the pending question (providing name, phone, email, education level, or selecting/naming a course, track, or program such as "Artificial Intelligence with Gen AI", "Full Stack", "Data Science").
 - course_question: Explicitly asking a question about course syllabus, duration, mode, fees, eligibility, placement, or Cybrom institute location/batches (e.g. "what is the syllabus", "fees kitni hai", "placement kaisa hai", "bhopal branch kahan hai"). Do NOT use this if the student is simply choosing or naming a course/track without asking a question.

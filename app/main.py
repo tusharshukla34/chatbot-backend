@@ -522,6 +522,65 @@ def chat(req: ChatRequest, request: Request):
             step_label="Matches" if session.get("browse_stage") == "post_selection" else "Level",
         )
 
+    # Conversational Acknowledgements / Affirmations (e.g. "ok", "theek hai", "achha", "sure", "got it")
+    if intent == "acknowledgement":
+        pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
+        b_stage = session.get("browse_stage", "education")
+        if b_stage in ["course", "post_selection"]:
+            courses = session.get("shown_courses", [])
+            reply = "Badiya! Upar diye gaye courses mein se aap kaunsa explore karna chahenge? Kisi bhi option pe tap karke syllabus ya details dekh sakte hain."
+            append_message(req.session_id, "assistant", reply)
+            save_session(req.session_id, session)
+            return ChatResponse(
+                reply=reply,
+                suggested_courses=courses,
+                quick_replies=q_replies,
+                step=step_num,
+                step_label=step_lbl,
+            )
+        elif b_stage == "subprogram":
+            prog = session.get("selected_program", "")
+            reply = f"Badiya! {prog} ke in tracks mein se aap kaunsa chunna chahenge?"
+            append_message(req.session_id, "assistant", reply)
+            save_session(req.session_id, session)
+            return ChatResponse(
+                reply=reply,
+                quick_replies=q_replies,
+                step=step_num,
+                step_label=step_lbl,
+            )
+        elif b_stage == "program":
+            reply = "Great! Aap kaunse area ya domain ke courses dekhna chahenge?"
+            append_message(req.session_id, "assistant", reply)
+            save_session(req.session_id, session)
+            return ChatResponse(
+                reply=reply,
+                quick_replies=q_replies,
+                step=step_num,
+                step_label=step_lbl,
+            )
+        elif b_stage == "education":
+            reply = "Badiya! Aapka current education level kya hai?"
+            append_message(req.session_id, "assistant", reply)
+            save_session(req.session_id, session)
+            return ChatResponse(
+                reply=reply,
+                quick_replies=q_replies,
+                step=step_num,
+                step_label=step_lbl,
+            )
+        else:
+            loc_p = localize_reply(pending_p, raw_text)
+            reply = f"Badiya! {loc_p}"
+            append_message(req.session_id, "assistant", reply)
+            save_session(req.session_id, session)
+            return ChatResponse(
+                reply=reply,
+                quick_replies=q_replies,
+                step=step_num,
+                step_label=step_lbl,
+            )
+
     # 1. Abusive language warning
     if intent == "abusive" or is_abusive(raw_text):
         base_warn = abusive_or_offtopic_reply()
@@ -568,7 +627,8 @@ def chat(req: ChatRequest, request: Request):
 
             append_message(req.session_id, "assistant", reply)
             save_session(req.session_id, session)
-            return ChatResponse(reply=reply, quick_replies=q_replies, step=step_num, step_label=step_lbl)
+            shown_courses_to_send = session.get("shown_courses", []) if session.get("browse_stage") == "course" else []
+            return ChatResponse(reply=reply, suggested_courses=shown_courses_to_send, quick_replies=q_replies, step=step_num, step_label=step_lbl)
 
     # 4. Lead Capture Phase (Early timing)
     if LEAD_CAPTURE_TIMING == "early" and not session.get("lead_captured", False):

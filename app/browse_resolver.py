@@ -152,15 +152,21 @@ def is_abusive(text: str) -> bool:
 
 
 def resolve_program_exact(text: str) -> Optional[str]:
-    """Matches text against known programs via exact name or keyword list."""
+    """Matches text against known programs via exact name or keyword list with word boundaries."""
     t = text.strip().lower()
     for p in REAL_PROGRAMS:
         if t == p.lower():
             return p
+    words = set(re.findall(r"\b\w+\b", t))
     for prog, keywords in PROGRAM_KEYWORDS.items():
         for kw in keywords:
-            if kw == t or kw in t:
-                return prog
+            kw_clean = kw.strip().lower()
+            if " " in kw_clean:
+                if re.search(r"\b" + re.escape(kw_clean) + r"\b", t):
+                    return prog
+            else:
+                if kw_clean in words:
+                    return prog
     return None
 
 

@@ -228,9 +228,17 @@ def get_pending_prompt(session: Dict[str, Any]) -> Tuple[str, List[str], int, st
     if b_stage == "subprogram":
         subs = get_subprograms(session.get("selected_program", ""))
         return f"Which {session.get('selected_program', '')} track interests you?", subs + ["Something else"], 3, "Mode"
-    if b_stage in ["course", "post_selection"]:
+    if b_stage == "course":
         titles = [c.get("title", "") for c in session.get("shown_courses", [])]
         return "Which course would you like to know more about?", titles + ["Still deciding"], 4, "Matches"
+    if b_stage == "post_selection":
+        sel = session.get("selected_course", "your selected course")
+        return (
+            f"Aur koi sawaal hai {sel} ya Cybrom ke baare mein?",
+            ["Fee & Batch details", "Placement assistance", "Talk to counselor", "Explore other courses"],
+            4,
+            "Matches",
+        )
 
     return "Anything else you'd like to know?", [], 4, "Matches"
 
@@ -495,7 +503,7 @@ def chat(req: ChatRequest, request: Request):
         return ChatResponse(reply=combined, quick_replies=q_replies, step=step_num, step_label=step_lbl)
 
     # 3. Interruption Handling (only if not directly answering the pending flow step)
-    if not is_answering_current_flow(session, raw_text):
+    if not is_answering_current_flow(session, raw_text) and session.get("browse_stage") != "post_selection":
         if intent in ["course_question", "general_tech_question"] or is_general_question(raw_text):
             pending_p, q_replies, step_num, step_lbl = get_pending_prompt(session)
             if intent == "general_tech_question":
@@ -811,7 +819,25 @@ def chat(req: ChatRequest, request: Request):
                     step_label="Matches",
                 )
 
-        # C. Consultative discussion / dislike / questions
+        # Check if student wants to explore other courses or tracks from scratch
+        if raw_text.strip().lower() in [
+            "explore other courses", "explore other tracks", "change course",
+            "kuch aur dikhao", "dusre courses", "change program", "other courses"
+        ]:
+            session["browse_stage"] = "program"
+            session.pop("selected_course", None)
+            save_session(req.session_id, session)
+            base_reply = "Bilkul! Aap kaunse program ya area ke courses dekhna chahenge?"
+            reply = localize_reply(base_reply, raw_text)
+            append_message(req.session_id, "assistant", reply)
+            return ChatResponse(
+                reply=reply,
+                quick_replies=REAL_PROGRAMS + ["Something else"],
+                step=2,
+                step_label="Interest",
+            )
+
+        # C. Consultative discussion / dislike / questions / identity
         is_alt = expresses_alternative_or_dislike(raw_text)
         reply = general_followup(
             history=session.get("history", []),
@@ -819,6 +845,7 @@ def chat(req: ChatRequest, request: Request):
             user_message=raw_text,
             selected_program=session.get("selected_program", ""),
             selected_subprogram=session.get("selected_subprogram", ""),
+            selected_course=session.get("selected_course", ""),
         )
         append_message(req.session_id, "assistant", reply)
         save_session(req.session_id, session)
@@ -829,7 +856,14 @@ def chat(req: ChatRequest, request: Request):
                 "Data Analytics",
                 "Cyber Security",
                 "Digital Marketing",
-                "Still deciding",
+                "Something else",
+            ]
+        elif stage == "post_selection":
+            quick_replies = [
+                "Fee & Batch details",
+                "Placement assistance",
+                "Talk to counselor",
+                "Explore other courses",
             ]
         else:
             quick_replies = titles + ["Still deciding"]
@@ -842,6 +876,7 @@ def chat(req: ChatRequest, request: Request):
         user_message=raw_text,
         selected_program=session.get("selected_program", ""),
         selected_subprogram=session.get("selected_subprogram", ""),
+        selected_course=session.get("selected_course", ""),
     )
     append_message(req.session_id, "assistant", reply)
     save_session(req.session_id, session)

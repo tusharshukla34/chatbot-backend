@@ -1,3 +1,4 @@
+import uuid
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -91,7 +92,7 @@ def test_intent_detection_flags():
 
 def test_step_and_step_label_in_response(client):
     """Verify /chat responses contain step numbers and step labels."""
-    sess_id = "test_step_sync_1"
+    sess_id = f"test_step_sync_{uuid.uuid4().hex[:8]}"
     resp = client.post("/chat", json={"session_id": sess_id, "message": "Hi"})
     assert resp.status_code == 200
     data = resp.json()
@@ -102,7 +103,7 @@ def test_step_and_step_label_in_response(client):
 
 def test_interruption_preserves_pending_state(client):
     """Asking a question mid-conversation must answer and retain pending lead capture stage."""
-    sess_id = "test_interrupt_flow_1"
+    sess_id = f"test_interrupt_flow_{uuid.uuid4().hex[:8]}"
     # Initiate chat
     client.post("/chat", json={"session_id": sess_id, "message": "Hi"})
 
@@ -119,7 +120,7 @@ def test_interruption_preserves_pending_state(client):
 
 def test_subprogram_selection_advances_to_courses_without_interruption_loop(client):
     """Verify selecting a 5-word subprogram (e.g. Artificial Intelligence with Gen AI) moves to step 4 without looping."""
-    sess_id = "test_subprog_no_loop_1"
+    sess_id = f"test_subprog_no_loop_{uuid.uuid4().hex[:8]}"
     # Seed session at subprogram stage
     sess = get_session(sess_id)
     sess["lead_captured"] = True
